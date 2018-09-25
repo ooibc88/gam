@@ -54,7 +54,7 @@ engine. To build them, simply run the below commands:
   make -j
 ```
 
-## #Macro Benchmark
+### Macro Benchmark
 There is a script `kv-benchmark.sh` provided in the `dht` directory to
 benchmark the key-value store. To run it, please change the variables in the
 script according to the experimental setting. There are also several parameters
@@ -80,13 +80,11 @@ tools. All tools but `farm-cluster-test` can be run directly. For
 directory. Please change the variables in that script according to the
 deployment environment.
 
-
-
 # References
 <span id=paper>
-> Qingchao Cai, Wentian Guo, Hao Zhang, Gang Chen, Beng Chin Ooi, Kian-Lee Tan, Yong Meng Teo, and Sheng Wang. *Efficient Distributed Memory Management with RDMA and Caching*. PVLDB, 11 (11): 1604- 1617, 2018. DOI: https://doi.org/10.14778/3236187.3236209
+> Qingchao Cai, Wentian Guo, Hao Zhang, Gang Chen, Beng Chin Ooi, Kian-Lee Tan, Yong Meng Teo, and Sheng Wang. *Efficient Distributed Memory Management with RDMA and Caching*. PVLDB, 11 (11): 1604- 1617, 2018. DOI: https://doi.org/10.14778/3236187.3236209.
 </span>
 
 <span id=farm>
->Aleksandar Dragojević, Dushyanth Narayanan, Orion Hodson, and Miguel Castro. *FaRM: Fast remote memory*. Proceedings of the 11th USENIX Conference on Networked Systems Design and Implementation. 2014.
+> Aleksandar Dragojević, Dushyanth Narayanan, Orion Hodson, and Miguel Castro. *FaRM: Fast remote memory*. Proceedings of the 11th USENIX Conference on Networked Systems Design and Implementation. 2014.
 </span>
