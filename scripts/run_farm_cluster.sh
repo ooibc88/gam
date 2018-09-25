@@ -9,11 +9,11 @@ obj_size=100
 iteration=10000
 txn_nobj=40
 
-exec="/users/caiqc/research/GlobalMemory/code/test/farm_cluster_test --ip_master $master --no_node $no_node --no_thread $no_thread --write_ratio $write_ratio --num_obj $num_obj --obj_size $obj_size --iteration $iteration --txn_nobj $txn_nobj"
+exec="/users/caiqc/gam-release/test/farm_cluster_test --ip_master $master --no_node $no_node --no_thread $no_thread --write_ratio $write_ratio --num_obj $num_obj --obj_size $obj_size --iteration $iteration --txn_nobj $txn_nobj"
 
 for (( i = 0; i < no_node; i++)); do
     worker="10.0.0.$((i + 110))"
-    log="/users/caiqc/gam/code/log/farm-$worker"".log"
+    log="/users/caiqc/gam-release/log/farm-$worker"".log"
     let node_id=i
     if [ $i -eq 0 ]; then
         is_master=1
