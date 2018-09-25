@@ -1,6 +1,5 @@
 // Copyright (c) 2018 The GAM Authors 
 
-
 #ifndef INCLUDE_LOG_H_
 #define INCLUDE_LOG_H_
 

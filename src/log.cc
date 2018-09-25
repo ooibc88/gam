@@ -1,6 +1,5 @@
 // Copyright (c) 2018 The GAM Authors 
 
-
 #include <cstdarg>
 #include <unistd.h>
 #include <syscall.h>

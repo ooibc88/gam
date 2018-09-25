@@ -13,59 +13,56 @@
 #include <cerrno>
 #include <cstring>
 
-void AcceptTcpClientHandle(aeEventLoop *el, int fd, void *data, int mask) {
-  epicAssert(data != nullptr);
-  Server *server = (Server*) (data);
-  char msg[MAX_CONN_STRLEN + 1];
-  int n;
-  const char *p;
-  Client *cli;
-  char neterr[ANET_ERR_LEN];
-  char cip[IP_STR_LEN];
-  int cfd, cport;
+void AcceptTcpClientHandle (aeEventLoop *el, int fd, void *data, int mask) {
+	epicAssert(data != nullptr);
+    Server *server = (Server*)(data);
+    char msg[MAX_CONN_STRLEN+1];
+    int n;
+    const char *p;
+    Client *cli;
+	char neterr[ANET_ERR_LEN];
+	char cip[IP_STR_LEN];
+	int cfd, cport;
 
-  cfd = anetTcpAccept(neterr, fd, cip, sizeof(cip), &cport);
-  if (cfd == ANET_ERR) {
-    if (errno != EWOULDBLOCK)
-      epicLog(LOG_WARNING, "Accepting client connection: %s", neterr);
-    return;
-  }
-  epicLog(LOG_INFO, "Accepted %s:%d", cip, cport);
+	cfd = anetTcpAccept(neterr, fd, cip, sizeof(cip), &cport);
+	if (cfd == ANET_ERR) {
+		if (errno != EWOULDBLOCK)
+			epicLog(LOG_WARNING, "Accepting client connection: %s", neterr);
+		return;
+	}
+	epicLog(LOG_INFO, "Accepted %s:%d", cip, cport);
 
-  if (mask & AE_READABLE) {
-    n = read(cfd, msg, sizeof msg);
-    if (unlikely(n <= 0)) {
-      epicLog(LOG_WARNING, "Unable to read conn string\n");
-      goto out;
+    if (mask & AE_READABLE) {
+        n = read(cfd, msg, sizeof msg);
+        if(unlikely(n <= 0)) {
+            epicLog(LOG_WARNING, "Unable to read conn string\n");
+            goto out;
+        }
+        msg[n] = '\0';
+        epicLog(LOG_INFO, "conn string %s\n", msg);
     }
-    msg[n] = '\0';
-    epicLog(LOG_INFO, "conn string %s\n", msg);
-  }
 
-  if (unlikely(!(cli = server->NewClient(msg)))) {
-    goto out;
-  }
-  server->UpdateWidMap(cli);
+    if (unlikely(!(cli = server->NewClient(msg)))) {
+        goto out;
+    }
 
-  if (unlikely(!(p = cli->GetConnString(server->GetWorkerId())))) {
-    goto out;
-  }
+    if (unlikely(!(p = cli->GetConnString(server->GetWorkerId())))) {
+        goto out;
+    }
 
-  server->UpdateWidMap(cli);
+    n = write(cfd, p, strlen(p));
 
-  n = write(cfd, p, strlen(p));
+	if (unlikely(n < strlen(p))) {
+		epicLog(LOG_WARNING, "Unable to send conn string\n");
+		server->RmClient(cli);
+	}
 
-  if (unlikely(n < strlen(p))) {
-    epicLog(LOG_WARNING, "Unable to send conn string\n");
-    server->RmClient(cli);
-  }
+	if(server->IsMaster()) server->PostAcceptWorker(cfd, server);
 
-  if (server->IsMaster())
-    server->PostAcceptWorker(cfd, server);
-
-  out: close(cfd);
+out:
+    close(cfd);
 }
 
-void ProcessRdmaRequestHandle(aeEventLoop *el, int fd, void *data, int mask) {
-  ((Server *) data)->ProcessRdmaRequest();
+void ProcessRdmaRequestHandle (aeEventLoop *el, int fd, void *data, int mask) {
+    ((Server *)data)->ProcessRdmaRequest();
 }

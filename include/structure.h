@@ -1,6 +1,5 @@
 // Copyright (c) 2018 The GAM Authors 
 
-
 #ifndef INCLUDE_STRUCTURE_H_
 #define INCLUDE_STRUCTURE_H_
 
@@ -9,7 +8,6 @@
 #include <string>
 #include "settings.h"
 #include "log.h"
-#include "locked_unordered_map.h"
 
 typedef size_t Size;
 typedef unsigned char byte;
@@ -19,7 +17,15 @@ typedef unsigned char byte;
 #define ALLOCATOR_ALREADY_EXIST_EXCEPTION 1
 #define ALLOCATOR_NOT_EXIST_EXECEPTION 2
 
-typedef uint64_t ptr_t;
+//struct GAddr {
+////	void *laddr; //local address
+////	int rid; //region id
+////	Size size;
+//	uint64_t rid:16; //currently rid = wid
+//	uint64_t off:48; //the offset to the local base addr
+//};
+
+typedef uint64_t ptr_t ;
 
 typedef uint64_t Key;
 typedef uint64_t GAddr;
@@ -39,30 +45,28 @@ typedef uint64_t GAddr;
 #define Gnullptr 0
 
 struct Conf {
-  bool is_master = true;  //mark whether current process is the master (obtained from conf and the current ip)
-  int master_port = 12345;
-  std::string master_ip = "localhost";
-  std::string master_bindaddr;
-  int worker_port = 12346;
-  std::string worker_bindaddr;
-  std::string worker_ip = "localhost";
-  Size size = 1024 * 1024L * 512;  //per-server size of memory pre-allocated
-  Size ghost_th = 1024 * 1024;
-  double cache_th = 0.15;  //if free mem is below this threshold, we start to allocate memory from remote nodes
-  int unsynced_th = 1;
-  double factor = 1.25;
-  int maxclients = 1024;
-  int maxthreads = 10;
-  int backlog = TCP_BACKLOG;
-  int loglevel = LOG_WARNING;
-  std::string* logfile = nullptr;
-  int timeout = 10;  //ms
-  int eviction_period = 100;  //ms
+	bool is_master = true; //mark whether current process is the master (obtained from conf and the current ip)
+	int master_port = 12345;
+	std::string master_ip = "localhost";
+	std::string master_bindaddr;
+	int worker_port = 12346;
+	std::string worker_bindaddr;
+	std::string worker_ip = "localhost";
+	Size size = 1024*1024L*512; //per-server size of memory pre-allocated
+	Size ghost_th = 1024*1024;
+	double cache_th = 0.15; //if free mem is below this threshold, we start to allocate memory from remote nodes
+	int unsynced_th = 1;
+	double factor = 1.25;
+	int maxclients = 1024;
+	int maxthreads = 10;
+	int backlog = TCP_BACKLOG;
+	int loglevel = LOG_DEBUG;
+	std::string* logfile = nullptr;
+	int timeout = 10; //ms
 };
 
 typedef int PostProcessFunc(int, void*);
 
-#define LOCK_MICRO(table, key) do {((table).lock(key));} while(0)
-#define UNLOCK_MICRO(table, key) ((table).unlock(key))
+#define FARM_ENABLED
 
 #endif /* INCLUDE_STRUCTURE_H_ */

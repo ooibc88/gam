@@ -1,6 +1,5 @@
 // Copyright (c) 2018 The GAM Authors 
 
-
 #ifndef INCLUDE_LOCKWRAPPER_H_
 #define INCLUDE_LOCKWRAPPER_H_
 
