@@ -82,7 +82,7 @@ deployment environment.
 
 # References
 <a name="paper"></a>
-Qingchao Cai, Wentian Guo, Hao Zhang, Gang Chen, Beng Chin Ooi, Kian-Lee Tan, Yong Meng Teo, and Sheng Wang. *Efficient Distributed Memory Management with RDMA and Caching*. PVLDB, 11 (11): 1604- 1617, 2018. DOI: https://doi.org/10.14778/3236187.3236209.
+[1] Qingchao Cai, Wentian Guo, Hao Zhang, Gang Chen, Beng Chin Ooi, Kian-Lee Tan, Yong Meng Teo, and Sheng Wang. *Efficient Distributed Memory Management with RDMA and Caching*. PVLDB, 11 (11): 1604- 1617, 2018. DOI: https://doi.org/10.14778/3236187.3236209.
 
 <a name="farm"></a>
-Aleksandar Dragojević, Dushyanth Narayanan, Orion Hodson, and Miguel Castro. *FaRM: Fast remote memory*. Proceedings of the 11th USENIX Conference on Networked Systems Design and Implementation. 2014.
+[2] Aleksandar Dragojević, Dushyanth Narayanan, Orion Hodson, and Miguel Castro. *FaRM: Fast remote memory*. Proceedings of the 11th USENIX Conference on Networked Systems Design and Implementation. 2014.
