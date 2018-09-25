@@ -1,4 +1,4 @@
-#Overview
+# Overview
 
 GAM (Globally Addressable Memory) is a distributed memory management platform
 which provides a global, unified memory space over a cluster of nodes connected
@@ -13,13 +13,13 @@ Write-After-Write ordering to remove costly writes from critical program
 execution paths. For more information, please refer to our [VLDB'18
 paper](#paper).
 
-#Build & Usage
-##Prerequisite
+# Build & Usage
+## Prerequisite
 1. `libverbs`
 2. `boost thread`
 3. `boost system`
 
-##GAM Core
+## GAM Core
 To build the core code of GAM, please go to the `src` directory and run `make`
 therein.
 ```
@@ -27,7 +27,7 @@ therein.
   make -j;
 ```
 
-###Test and Micro Benchmark
+### Test and Micro Benchmark
 We provide an extensive set of tools to test and benchmark GAM. These tools are
 contained in the `test` directory, and also serve the purpose of demonstrating
 the usage of the APIs provided in GAM. To build them, simply run `make -j` in
@@ -43,7 +43,7 @@ be no smaller than that of nodes for benchmarking.
 There are multiple parameters that can be varied for
 a thorough benchmarking, please refer to [our paper](#paper) for detail.
 
-##Applications
+## Applications
 We build two distributed applications on top of GAM by using the APIs GAM
 provide, a distributed key-value store and distributed transaction processing
 engine. To build them, simply run the below commands:
@@ -54,7 +54,7 @@ engine. To build them, simply run the below commands:
   make -j
 ```
 
-###Macro Benchmark
+## #Macro Benchmark
 There is a script `kv-benchmark.sh` provided in the `dht` directory to
 benchmark the key-value store. To run it, please change the variables in the
 script according to the experimental setting. There are also several parameters
@@ -64,7 +64,7 @@ number of nodes. Please refer to the [GAM paper](#paper) and the script for deta
 To run the TPCC benchmark, please follow the instructions of the `README` file
 in the `database` directory.
 
-##FaRM
+## FaRM
 We implement the [FaRM](#farm) system as a baseline for macro benchmark. To build
 the FaRM codebase, please run the below command:
 ```
@@ -82,7 +82,7 @@ deployment environment.
 
 
 
-#References
+# References
 <span id=paper>
 > Qingchao Cai, Wentian Guo, Hao Zhang, Gang Chen, Beng Chin Ooi, Kian-Lee Tan, Yong Meng Teo, and Sheng Wang. *Efficient Distributed Memory Management with RDMA and Caching*. PVLDB, 11 (11): 1604- 1617, 2018. DOI: https://doi.org/10.14778/3236187.3236209
 </span>
