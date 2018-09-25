@@ -38,7 +38,9 @@ the benchmarking of GAM. This script is also used to generate the result of the
 micro benchmark in the [GAM paper](#paper). To run this script, a `slaves` file needs to
 be provided within the same directory. Each line of the `slaves` file contains
 the ip address and port (separated by space) of a node that is involved in the
-benchmarking. There are multiple parameters that can be varied for
+benchmarking, and the number of lines contained in the `slaves` file should
+be no smaller than that of nodes for benchmarking.
+There are multiple parameters that can be varied for
 a thorough benchmarking, please refer to [our paper](#paper) for detail.
 
 ##Applications

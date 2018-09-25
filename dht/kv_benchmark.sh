@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bench='/user/caiqc/gam/code/dht/benchmark'
+bench='/user/caiqc/gam-release/dht/benchmark'
 master="ciidaa-a05"
 log_dir="/user/caiqc/log"
 
