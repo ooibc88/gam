@@ -34,10 +34,8 @@ public:
 
 	void Broadcast(const char* buf, size_t len);
 
-#ifdef FARM_ENABLED
-    void FarmProcessRemoteRequest(Client* client, const char* msg, uint32_t size);
-    void FarmResumeTxn(Client*){}
-#endif
+  void FarmProcessRemoteRequest(Client* client, const char* msg, uint32_t size);
+  void FarmResumeTxn(Client*){}
 
     void ProcessRequest(Client* client, WorkRequest* wr);
     //some post process after accepting a TCP connection (e.g., send the worker list)

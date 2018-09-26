@@ -67,6 +67,4 @@ struct Conf {
 
 typedef int PostProcessFunc(int, void*);
 
-#define FARM_ENABLED
-
 #endif /* INCLUDE_STRUCTURE_H_ */

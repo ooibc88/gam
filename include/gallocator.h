@@ -10,8 +10,6 @@
 #include "settings.h"
 #include "worker_handle.h"
 #include "master.h"
-
-#if defined(FARM_ENABLED)
 #include "farm.h"
 
 class GAlloc{
@@ -52,7 +50,6 @@ public:
 protected:
 	Farm *farm;
 };
-#endif
 
 class GAllocFactory {
 	static const Conf* conf;

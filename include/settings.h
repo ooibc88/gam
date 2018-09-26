@@ -8,7 +8,7 @@ using namespace std;
 //#define DEBUG
 //#define LOCAL_MEMORY_HOOK
 
-#define NDEBUG
+//#define NDEBUG
 
 #define HARDWARE_CACHE_LINE 64
 
