@@ -1,13 +1,4 @@
-/*
- * worker.h
- * The real worker who is used to allocate the memory in a global manner
- *
- *  Created on: Mar 2, 2016
- *      Author: zhanghao
- *
- *  The worker that is responsible for accepting/sending requests,
- *  and receiving local allocator requests and processing
- */
+// Copyright (c) 2018 The GAM Authors 
 
 #ifndef INCLUDE_WORKER_H_
 #define INCLUDE_WORKER_H_
