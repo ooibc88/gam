@@ -23,6 +23,7 @@ class BenchmarkInitiator {
 
     Conf* conf = new Conf();
     conf->loglevel = LOG_WARNING;
+    conf->size = 1024 * 1024L * 512 * 2 * 16;
     conf->is_master = config_->IsMaster();
     conf->master_ip = ClusterHelper::GetIpByHostName(master.addr_);
     conf->worker_ip = ClusterHelper::GetIpByHostName(myhost.addr_);

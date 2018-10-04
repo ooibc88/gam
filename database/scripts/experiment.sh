@@ -78,7 +78,7 @@ auto_fill_params () {
 
 auto_fill_params
 # run standard tpcc
-#run_tpcc
+run_tpcc
 
-vary_read_ratios
+# vary_read_ratios
 #vary_temp_locality
