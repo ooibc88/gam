@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __TPCC_INITIATOR_H__
 #define __TPCC_INITIATOR_H__
 

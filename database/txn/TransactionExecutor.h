@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE__TRANSACTION_EXECUTOR_H__
 #define __DATABASE__TRANSACTION_EXECUTOR_H__
 

@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_UTILS_PROFILER_H__
 #define __DATABASE_UTILS_PROFILER_H__
 

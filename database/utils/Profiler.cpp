@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #include "Profiler.h"
 
 namespace Database {

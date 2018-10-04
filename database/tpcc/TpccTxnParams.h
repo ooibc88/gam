@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_TPCC_TXN_PARAMS_H__
 #define __DATABASE_TPCC_TXN_PARAMS_H__
 

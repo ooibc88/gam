@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #include "TpccRandomGenerator.h"
 
 namespace Database {

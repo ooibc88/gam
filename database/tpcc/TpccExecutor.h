@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_TPCC_EXECUTOR_H__
 #define __DATABASE_TPCC_EXECUTOR_H__
 

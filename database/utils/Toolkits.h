@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_UTILS_TOOLKITS_H__
 #define __DATABASE_UTILS_TOOLKITS_H__
 

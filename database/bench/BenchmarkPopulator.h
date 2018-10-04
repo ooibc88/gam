@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_BENCHMARK_POPULATOR_H__
 #define __DATABASE_BENCHMARK_POPULATOR_H__
 

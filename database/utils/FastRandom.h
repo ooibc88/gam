@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_UTILS_FAST_RANDOM_H__
 #define __DATABASE_UTILS_FAST_RANDOM_H__
 

@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_STORAGE_COLUMN_INFO_H__  
 #define __DATABASE_STORAGE_COLUMN_INFO_H__  
 

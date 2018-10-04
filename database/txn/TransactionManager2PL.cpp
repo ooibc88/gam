@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #if defined(LOCK)
 #include "TransactionManager.h"
 

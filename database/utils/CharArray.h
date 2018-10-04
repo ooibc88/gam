@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_UTILS_CHAR_ARRAY_H__
 #define __DATABASE_UTILS_CHAR_ARRAY_H__
 

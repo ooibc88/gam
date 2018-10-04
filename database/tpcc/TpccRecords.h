@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef _DATABASE_TPCC_RECORDS_H__
 #define _DATABASE_TPCC_RECORDS_H__
 

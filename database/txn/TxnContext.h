@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_TXN_TXN_CONTEXT_H__
 #define __DATABASE_TXN_TXN_CONTEXT_H__
 

@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_UTILS_TIME_MEASURER_H__
 #define __DATABASE_UTILS_TIME_MEASURER_H__
 

@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_BENCHMARK_SOURCE_H__
 #define __DATABASE_BENCHMARK_SOURCE_H__
 

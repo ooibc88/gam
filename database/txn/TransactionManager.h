@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_TXN_TRANSACTION_MANAGER_H__
 #define __DATABASE_TXN_TRANSACTION_MANAGER_H__
 

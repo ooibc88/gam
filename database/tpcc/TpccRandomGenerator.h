@@ -1,3 +1,4 @@
+// NOTICE: this file is adapted from Cavalia
 #ifndef __DATABASE_TPCC_RANDOM_GENERATOR_H__
 #define __DATABASE_TPCC_RANDOM_GENERATOR_H__
 
