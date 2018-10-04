@@ -239,6 +239,9 @@ void Worker::ProcessPendingWrite(Client* cli, WorkRequest* wr) {
 
       --wr->parent->counter;
       epicAssert(wr->parent->counter == 0);  //lock is guaranteed to be only one block
+      parent->unlock(); // unlock earlier
+      // Notify() should be called in the very last after all usage of parent,
+      // since the app thread may exit the function and release the memory of parent
       Notify(wr->parent);
       wr->parent = nullptr;
 
@@ -251,6 +254,7 @@ void Worker::ProcessPendingWrite(Client* cli, WorkRequest* wr) {
       wr = nullptr;
     } else {
       wr->unlock();
+      parent->unlock(); // unlock earlier
       if (wr->flag & CACHED) {
         epicAssert(!IsLocal(wr->addr));
         cache.unlock(wr->addr);
@@ -261,7 +265,7 @@ void Worker::ProcessPendingWrite(Client* cli, WorkRequest* wr) {
         epicAssert(false);
       }
     }
-    parent->unlock();
+    // parent->unlock(); // @wentian: originally here
     return;
   }
 
