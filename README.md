@@ -18,9 +18,11 @@ paper](#paper).
 1. `libverbs`
 2. `boost thread`
 3. `boost system`
+4. `gcc 4.8.4+`
 
 ## GAM Core
-To build the core code of GAM, please go to the `src` directory and run `make`
+First build `libcuckoo` in the `lib/libcuckoo` directory by following the
+`README.md` file in that directory, and then go to the `src` directory and run `make`
 therein.
 ```
   cd src;
