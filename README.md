@@ -88,3 +88,33 @@ deployment environment.
 
 <a name="farm"></a>
 [2] Aleksandar Dragojević, Dushyanth Narayanan, Orion Hodson, and Miguel Castro. *FaRM: Fast remote memory*. Proceedings of the 11th USENIX Conference on Networked Systems Design and Implementation. 2014.
+
+# License
+Copyright (c) 2018 The GAM Authors 
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+```
+  http://www.apache.org/licenses/LICENSE-2.0
+```
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+# Notice
+The TPCC benchmark code in the `database` directory is adapted from an open
+source project Cavalia, which can be found at
+```
+  https://github.com/Cavalia/Cavalia
+```
+In addition, this project uses the event loop implementation of Redis, which can
+be found at 
+```
+  https://redis.io/
+```
+
