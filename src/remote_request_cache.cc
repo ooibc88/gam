@@ -771,6 +771,9 @@ void Worker::ProcessRemoteWriteReply(Client* client, WorkRequest* wr) {
 
             --pwr->parent->counter;
             epicAssert(pwr->parent->counter == 0);  //lock is guaranteed to be only one block
+            parent->unlock(); // unlock earlier
+            // Notify() should be called in the very last after all usage of parent,
+            // since the app thread may exit the function and release the memory of parent
             Notify(pwr->parent);
             pwr->parent = nullptr;
 
@@ -781,6 +784,7 @@ void Worker::ProcessRemoteWriteReply(Client* client, WorkRequest* wr) {
             pwr = nullptr;
           } else {
             pwr->unlock();
+            parent->unlock(); // unlock earlier
             //don't need to lock parent
             if (IsLocal(addr)) {
               directory.unlock(ToLocal(addr));
@@ -788,7 +792,7 @@ void Worker::ProcessRemoteWriteReply(Client* client, WorkRequest* wr) {
               cache.unlock(addr);
             }
           }
-          parent->unlock();
+          // parent->unlock(); // @wentian: originally here
           break;
         }
       case WRITE_FORWARD:  //home node
