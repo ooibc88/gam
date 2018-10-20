@@ -3,7 +3,7 @@
 #include "kvclient.h"
 #include "kv.h"
 #include "chars.h"
-#include "../include/gallocator.h"
+#include "gallocator.h"
 
 namespace dht{
 

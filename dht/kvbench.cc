@@ -10,8 +10,8 @@
 #include <cstdlib>
 #include <cstdint>
 
-#include "../include/gallocator.h"
-#include "../include/util.h"
+#include "gallocator.h"
+#include "util.h"
 #include "kvclient.h"
 #include "kv.h"
 
