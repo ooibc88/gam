@@ -737,42 +737,16 @@ void Worker::FarmProcessLocalRead(WorkRequest* wr) {
   TxnContext* tx = this->local_txns_[wr->id];
 
   epicAssert(!IsLocal(wr->addr));
-  //if (IsLocal(wr->addr))
-  if (0) {
-    /* local read */
-    wr->op = FARM_READ_REPLY;
-
-    char* base = (char*)ToLocal(wr->addr);
-    version_t v;
-    osize_t s;
-    readInteger(base, v, s);
-
-    if (unlikely(v == 0 || s == -1)) {
-      // this address is free'ed or has not written
-      wr->status = Status::READ_ERROR;
-      epicLog(LOG_DEBUG, "Address %lx is not alloc'ed or has been free'ed", wr->addr);
-    } else {
-      // allow read while being locked
-      if (0) {
-        to_serve_local_requests[wr->addr].push(wr);
-        return;
-      } else {
-        Object* o = local_txns_[wr->id]->createReadableObject(wr->addr);
-        wr->status = SUCCESS;
-        o->deserialize(reinterpret_cast<const char*>(base));
-      }
-    }
+  
+  /* remote read: forward request to designated worker */
+  Client *c = GetClient(wr->addr);
+  if (unlikely(!c)) {
+    wr->status = READ_ERROR;
   } else {
-    /* remote read: forward request to designated worker */
-    Client *c = GetClient(wr->addr);
-    if (unlikely(!c)) {
-      wr->status = READ_ERROR;
-    } else {
-      to_serve_local_requests[wr->addr].push(wr);
-      if (to_serve_local_requests[wr->addr].size() == 1)
-        FarmAddTask(c, local_txns_[wr->id]);
-      return;
-    }
+    to_serve_local_requests[wr->addr].push(wr);
+    if (to_serve_local_requests[wr->addr].size() == 1)
+      FarmAddTask(c, local_txns_[wr->id]);
+    return;
   }
 
   if(Notify(wr)) {
