@@ -51,7 +51,7 @@ uint64_t rdtsc();
 #define atomic_read(v) __sync_fetch_and_add((v), (0))
 
 inline int GetRandom(int min, int max) {
-  static __thread unsigned int tid = (unsigned int) syscall(SYS_gettid);
+  static thread_local unsigned int tid = (unsigned int) syscall(SYS_gettid);
   epicLog(LOG_DEBUG, "tid = %d", tid);
   int ret = (rand_r(&tid) % (max - min)) + min;
   return ret;

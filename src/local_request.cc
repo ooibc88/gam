@@ -125,7 +125,7 @@ int Worker::ProcessLocalMalloc(WorkRequest* wr) {
     wr->addr = TO_GLOB(addr, base, GetWorkerId());
     wr->status = SUCCESS;
     ghost_size += wr->size;
-    if (abs(ghost_size.load()) > conf->ghost_th)
+    if (labs(ghost_size.load()) > conf->ghost_th)
       SyncMaster();
   } else {
     wr->status = ALLOC_ERROR;
@@ -159,7 +159,7 @@ int Worker::ProcessLocalFree(WorkRequest* wr) {
     void* addr = ToLocal(wr->addr);
     Size size = sb.sb_free(addr);
     ghost_size -= size;
-    if (abs(ghost_size.load()) > conf->ghost_th)
+    if (labs(ghost_size.load()) > conf->ghost_th)
       SyncMaster();
   } else {
     Client* cli = GetClient(wr->addr);
