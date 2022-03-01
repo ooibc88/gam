@@ -21,7 +21,7 @@ constexpr uint32_t KEY_SIZE = 100;
 constexpr uint32_t REPORT = 100000;
 
 int is_master = 0;
-const char* ip_master = "10.10.10.119"; //get_local_ip("eth0").c_str();
+const char* ip_master = "10.10.1.1"; //get_local_ip("eth0").c_str();
 const char* ip_worker = "localhost"; // get_local_ip("eth0").c_str();
 int port_master = 9991;
 int port_worker = 9992;
@@ -32,10 +32,10 @@ int val_size = 32;
 int cache_th = 30;
 int client_id = 0;
 int iter = 40000;
-const char *ycsb_dir = "/data/caiqc/zipf";
+const char *ycsb_dir = "/mnt/proj/FAAST/gam/dht/data/ycsb";
 
 pthread_t *threads;
-pthread_mutex_t cnt_mutex = PTHREAD_MUTEX_INITIALIZER;    
+pthread_mutex_t cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
 int ccount = 0;
 
@@ -70,7 +70,8 @@ void populate(FILE * fp, kvClient* cli) {
   char key[KEY_SIZE];
   uint64_t start = mstime();
   uint64_t last_report = start, current;
-  fprintf(stdout, "start to populate\n");
+  //fprintf(stdout, "start to populate\n");
+  epicLog(LOG_WARNING, "start to populate\n");
   int cnt = 0;
   while(cnt++ < iter && fgets(key, KEY_SIZE, fp)) {
     key[strlen(key) - 1] = 0;
@@ -96,6 +97,7 @@ void benchmark(FILE* fp, kvClient* cli) {
   uint64_t t1, t2;
   uint64_t last_report = start, current;
   int cnt = 0;
+  epicLog(LOG_WARNING, "[dbg] Maziyar: benchmark func, right before while loop\n");
   while(cnt++ < iter && fgets(key, KEY_SIZE, fp)) {
     key[strlen(key) - 1] = 0;
     if (GetRandom(0, 100, &seed) < get_ratio) {
@@ -124,11 +126,15 @@ void benchmark(FILE* fp, kvClient* cli) {
   double gets = get_finished.load(), sets = set_finished.load();
   double glat = get_latency.load(), slat = set_latency.load();
   printf("%lu, %.2f", finished - 1, (finished-1) * 1000/duration); 
+  epicLog(LOG_WARNING, "[dbg] Maziyar: benchmark func, after calculating the duration\n");
+
   if (gets > 0) printf(", %.2f", glat/gets);
   else printf(", -");
   if (sets > 0) printf(", %.2f", slat/sets);
   else printf(", -");
   printf("\n");
+  epicLog(LOG_WARNING, "[dbg] Maziyar: end of benchmark function!\n");
+
 }
 
 void* do_work(void* fname) {
@@ -137,12 +143,16 @@ void* do_work(void* fname) {
     perror("fopen:");
     exit(1);
   }
-
+  fprintf(stdout, "[dbg] Maziyar: do_work func, right before allocating GAllocator!\n");
   GAlloc* alloc = GAllocFactory::CreateAllocator(&conf);
+  fprintf(stdout, "[dbg] Maziyar: do_work func, right before creating the client!\n");
   kvClient* cli = new kvClient(alloc);
-
+  epicLog(LOG_WARNING, "[dbg] MAziyar: We are at the end of creating  a KV client!");
   rewind(fp);
+  epicLog(LOG_WARNING, "[dbg] Maziyar: do_work func, right before population!\n");
+
   populate(fp, cli);
+  epicLog(LOG_WARNING, "[dbg] Maziyar: do_work func, right after population!\n");
 
   char v = 1;
   char* vs = new char[no_client];
@@ -150,21 +160,37 @@ void* do_work(void* fname) {
 
   // synchronize among population threads
   pthread_mutex_lock(&cnt_mutex);
+  epicLog(LOG_WARNING, "[dbg] Maziyar: mutex locked!\n");
+
   if (++ccount % no_thread == 0) {
+    epicLog(LOG_WARNING, "[dbg] Maziyar: in if block count: %d, no_thread: %d!\n", ccount, no_thread);
+
     alloc->Put(client_id, &v, 1);
+    epicLog(LOG_WARNING, "[dbg] Maziyar: in if block vs: %s, v: %d!\n", vs, v);
     for (i = 0; i < no_client; i++) {
       vs[i] = 0;
-      while (vs[i] != 1) alloc->Get(i, &vs[i]);
+      epicLog(LOG_WARNING, "[dbg] Maziyar: in for block no_clients: %d, i: %d!\n", no_client, i);
+
+      while (vs[i] != 1){
+	alloc->Get(i, &vs[i]);
+        epicLog(LOG_WARNING, "[dbg] Maziyar: in while block no_clients: %d, vs: %d and i: %d!\n", no_client, vs[i], i);
+      }
     }
+    epicLog(LOG_WARNING, "[dbg] Maziyar: right before pthread broadcast!\n");
+
     pthread_cond_broadcast(&cv);
   } else {
+    epicLog(LOG_WARNING, "[dbg] Maziyar: in else block count: %d, no_thread: %d!\n", ccount, no_thread);
+
     while(ccount % no_thread != 0) {
       pthread_cond_wait(&cv, &cnt_mutex);
     }
   }
   pthread_mutex_unlock(&cnt_mutex);
-
+  epicLog(LOG_WARNING, "[dbg] Maziyar: mutex unlocked!\n");
   finished.store(1);
+  epicLog(LOG_WARNING, "[dbg] Maziyar: after population threads synchronization, before rewind!\n");
+
   rewind(fp);
   benchmark(fp, cli);
 
@@ -247,7 +273,7 @@ int main(int argc, char* argv[]) {
   conf.master_port = port_master;
   conf.worker_ip = ip_worker;
   conf.worker_port = port_worker;
-  conf.size = (1UL << 34); // 16GB
+  conf.size = (1UL << 32); // 4GB
   conf.cache_th = (double)cache_th/100;
 
   GAlloc* alloc = GAllocFactory::CreateAllocator(&conf);
@@ -280,7 +306,7 @@ int main(int argc, char* argv[]) {
       if (fname[strlen(fname) - 1] != '/')
         fname[strlen(fname)] = '/';
       strcat(fname, ent->d_name);
-      sleep(10);
+      //sleep(10);
       pthread_create(&threads[i], NULL, do_work, fname);
     }
 

@@ -1,0 +1,53 @@
+[39683] 26 Feb 02:33:02.556 - [slabs.cc:404-sb_aligned_malloc()] allocate memory 2147483648, larger than default max 1048576
+[39683] 26 Feb 02:33:02.562 - [worker.cc:117-Worker()] LRU eviction is enabled, max cache lines = 2516582, reserved mem size = 4294967296, cache_percentage = 0.300000, block_size = 512
+[dbg] Maziyar: do_work func, right before allocating GAllocator!
+[dbg] Maziyar: do_work func, right before creating the client!
+[39687] 26 Feb 02:33:05.848 - [kvclient.cc:32-kvClient()] 2 hash tables received
+[39687] 26 Feb 02:33:05.848 - [kvclient.cc:34-kvClient()] [dbg] MAziyar: We are at the end of creating  a KV client!
+[39687] 26 Feb 02:33:05.848 - [kvbench.cc:150-do_work()] [dbg] MAziyar: We are at the end of creating  a KV client!
+[39687] 26 Feb 02:33:05.848 - [kvbench.cc:152-do_work()] [dbg] Maziyar: do_work func, right before population!
+
+[39687] 26 Feb 02:33:05.848 - [kvbench.cc:74-populate()] start to populate
+
+40001, 157480.31
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:155-do_work()] [dbg] Maziyar: do_work func, right after population!
+
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:163-do_work()] [dbg] Maziyar: mutex locked!
+
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:166-do_work()] [dbg] Maziyar: in if block count: 1, no_thread: 1!
+
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:169-do_work()] [dbg] Maziyar: in if block vs:  ìL8, v: 1!
+
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:172-do_work()] [dbg] Maziyar: in for block no_clients: 3, i: 0!
+
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:176-do_work()] [dbg] Maziyar: in while block no_clients: 3, vs: 1 and i: 0!
+
+[39687] 26 Feb 02:33:06.101 - [kvbench.cc:172-do_work()] [dbg] Maziyar: in for block no_clients: 3, i: 1!
+
+[39687] 26 Feb 02:33:06.235 - [kvbench.cc:176-do_work()] [dbg] Maziyar: in while block no_clients: 3, vs: 1 and i: 1!
+
+[39687] 26 Feb 02:33:06.235 - [kvbench.cc:172-do_work()] [dbg] Maziyar: in for block no_clients: 3, i: 2!
+
+[39687] 26 Feb 02:33:08.339 - [kvbench.cc:176-do_work()] [dbg] Maziyar: in while block no_clients: 3, vs: 1 and i: 2!
+
+[39687] 26 Feb 02:33:08.339 - [kvbench.cc:179-do_work()] [dbg] Maziyar: right before pthread broadcast!
+
+[39687] 26 Feb 02:33:08.339 - [kvbench.cc:190-do_work()] [dbg] Maziyar: mutex unlocked!
+
+[39687] 26 Feb 02:33:08.339 - [kvbench.cc:192-do_work()] [dbg] Maziyar: after population threads synchronization, before rewind!
+
+[39687] 26 Feb 02:33:08.339 - [kvbench.cc:100-benchmark()] [dbg] Maziyar: benchmark func, right before while loop
+
+40000, 147601.48[39687] 26 Feb 02:33:08.611 - [kvbench.cc:129-benchmark()] [dbg] Maziyar: benchmark func, after calculating the duration
+
+, 6665.85, -
+[39687] 26 Feb 02:33:08.611 - [kvbench.cc:136-benchmark()] [dbg] Maziyar: end of benchmark function!
+
+[39687] 26 Feb 02:33:08.611 - [kvbench.cc:197-do_work()] warmup
+[39687] 26 Feb 02:33:08.611 - [kvbench.cc:100-benchmark()] [dbg] Maziyar: benchmark func, right before while loop
+
+40000, 470588.24[39687] 26 Feb 02:33:08.695 - [kvbench.cc:129-benchmark()] [dbg] Maziyar: benchmark func, after calculating the duration
+
+, 4335.16, -
+[39687] 26 Feb 02:33:08.695 - [kvbench.cc:136-benchmark()] [dbg] Maziyar: end of benchmark function!
+

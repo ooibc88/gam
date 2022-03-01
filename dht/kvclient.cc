@@ -31,6 +31,7 @@ kvClient::kvClient(GAlloc* alloc) : allocator_(alloc) {
     std::sort(htables_.begin(), htables_.end());
     epicLog(LOG_WARNING, "%d hash tables received", htables_.size());
   }
+  epicLog(LOG_WARNING, "[dbg] MAziyar: We are at the end of creating  a KV client!");
 }
 
 GAddr kvClient::getBktAddr(hash_t key) {
