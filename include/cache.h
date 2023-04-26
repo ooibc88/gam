@@ -352,6 +352,10 @@ class Cache {
   void lock(CacheLine* cline) = delete;
   void unlock(CacheLine* cline) = delete;
 
+  /* add ergeda add */
+  void DeleteCache(CacheLine * cline);
+  /* add ergeda add */
+
 #ifdef SELECTIVE_CACHING
   void ToNotCache(CacheLine* cline, bool write = false);
 #endif

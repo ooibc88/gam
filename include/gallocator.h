@@ -29,8 +29,12 @@ class GAlloc {
    * @param base: used to guarantee the affinity,
    * 				trying to put the newly-allocated addr to be in the same node of the base addr
    */
-  GAddr Malloc(const Size size, Flag flag = 0);
-  GAddr Malloc(const Size size, GAddr base, Flag flag = 0);
+  //GAddr Malloc(const Size size, Flag flag = 0);
+  //GAddr Malloc(const Size size, GAddr base, Flag flag = 0);
+  /* add ergeda add */
+  GAddr Malloc(const Size size, Flag flag = 0, int Owner=0); //为flag增加表示datastate的标志位，Malloc时候有可能需要指定owner。
+  GAddr Malloc(const Size size, GAddr base, Flag flag = 0, int Owner=0);
+  /* add ergeda add */
   GAddr AlignedMalloc(const Size size, GAddr base, Flag flag = 0);
   GAddr AlignedMalloc(const Size size, Flag flag = 0);
   GAddr Calloc(Size nmemb, Size size, Flag flag, GAddr base);

@@ -513,9 +513,10 @@ unsigned long long Worker::SubmitRequest(Client* cli, WorkRequest* wr, int flag,
    * TODO: it is actually not necessary
    * can remove it after development
    */
+  //Just_for_test("submitrequest", wr);
   wr->wid = GetWorkerId();
 
-  if (!((wr->op & REPLY) || (flag & REQUEST_NO_ID)))
+  if (!((wr->op & REPLY) || (flag & REQUEST_NO_ID))) //之前一直没注意这一句
     wr->id = GetWorkPsn();
   if (flag & ADD_TO_PENDING)
     AddToPending(wr->id, wr);
@@ -686,7 +687,7 @@ void Worker::ProcessFenced(Fence* fence) {
 }
 
 int Worker::Notify(WorkRequest* wr) {
-
+  //Just_for_test("Notify", wr);
   if (wr->op == WRITE || wr->op == WLOCK) {
     if (IsLocal(wr->addr)) {
       ++no_local_writes_;

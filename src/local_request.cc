@@ -125,11 +125,40 @@ int Worker::ProcessLocalMalloc(WorkRequest* wr) {
     wr->addr = TO_GLOB(addr, base, GetWorkerId());
     wr->status = SUCCESS;
     ghost_size += wr->size;
-    if (abs(ghost_size.load()) > conf->ghost_th)
+    if (abs( (long long)ghost_size.load()) > conf->ghost_th)
       SyncMaster();
   } else {
     wr->status = ALLOC_ERROR;
   }
+
+  /* add ergeda add */
+  DataState Dstate = GetDataState(wr->flag);
+  //if (Dstate != MSI) {
+    GAddr Owner = ( (long long)(wr->arg) << 48);
+    //printf ("arg : %llu\n", wr->arg);
+    //epicLog(LOG_WARNING, "owner_id : %d", WID(Owner) );
+    if (GetWorkerId() == WID(wr->addr)) { // Cur_node == home_node
+      CreateDir(wr, Dstate, Owner); //home_node需要建立directory，只要选择多级一致性就需要在home_node建目录,unless msi
+    }
+    if (Dstate == DataState::ACCESS_EXCLUSIVE) {
+      if (GetWorkerId() == WID(Owner) && GetWorkerId() != WID(wr->addr) ) {// cur_node = owner_node, cur_node != home_node, 需要在本地建cache
+        CreateCache(wr, Dstate);
+      }
+
+      if (GetWorkerId() != WID(Owner) && WID(wr->addr) != WID(Owner) ) { //owner_node != home_node and owner_node != cur_node;
+      // Cur_node != owner_node,需要发消息给owner_node，建立相应目录和cache.
+        wr->op = SET_CACHE;
+        //TODO: 后续工作需要加上一个指令，在状态转换的过程中，还需要传数据过去，可能通过传地址，然后用rdma的read_with_imm去实现
+        Client * Cur_client = GetClient(Owner);
+        //Just_for_test(wr);
+        SubmitRequest(Cur_client, wr, ADD_TO_PENDING | REQUEST_SEND);
+        return REMOTE_REQUEST; //等待请求返回
+      }
+    }
+  //}
+
+  epicLog(LOG_WARNING, "at least got to malloc");
+  /* add ergeda add */
 
 #ifdef MULTITHREAD
   if (wr->flag & TO_SERVE || wr->flag & FENCE) {
@@ -145,6 +174,7 @@ int Worker::ProcessLocalMalloc(WorkRequest* wr) {
 #ifdef MULTITHREAD
   }
 #endif
+
   return SUCCESS;
 }
 
@@ -159,7 +189,7 @@ int Worker::ProcessLocalFree(WorkRequest* wr) {
     void* addr = ToLocal(wr->addr);
     Size size = sb.sb_free(addr);
     ghost_size -= size;
-    if (abs(ghost_size.load()) > conf->ghost_th)
+    if (abs( (long long) ghost_size.load()) > conf->ghost_th)
       SyncMaster();
   } else {
     Client* cli = GetClient(wr->addr);
@@ -255,6 +285,26 @@ int Worker::ProcessLocalSFence(WorkRequest* wr) {
   }
   return SUCCESS;
 }
+
+/* add ergeda add */
+void Worker::CreateDir(WorkRequest * wr, DataState Cur_state, GAddr Owner) {
+  //Just_for_test("CreateDir", wr);
+  GAddr start = wr->addr;
+  GAddr start_blk = TOBLOCK(start);
+  GAddr end = GADD(start, wr->size);
+
+  for (GAddr i = start_blk; i < end;) {
+    GAddr nextb = BADD(i, 1);
+    void* laddr;
+    if (IsLocal(i)) laddr = ToLocal(i);
+    else laddr = (void*)i;
+    directory.lock(laddr);
+    directory.CreateEntry(laddr, Cur_state, Owner);
+    directory.unlock(laddr);
+    i = nextb;
+  }
+}
+/* add ergeda add */
 
 int Worker::ProcessLocalRequest(WorkRequest* wr) {
   epicLog(

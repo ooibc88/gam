@@ -48,6 +48,17 @@ enum Work {
   PENDING_INVALIDATE,
   PUT,
   GET,
+  /* add ergeda add */
+  JUST_WRITE, // access_exclusive write
+  SET_CACHE, // create cache when malloc
+  JUST_READ, //access_exclusive read
+  READ_TYPE,
+  RM_WRITE, //read_mostly write
+  RM_READ, // read_mostly read
+  RM_FORWARD, //read_mostly forward_write
+  RM_Done, //read_mostly forward_write_done
+  TEST_RDMA, //used to learn rdma workflow
+  /* add ergeda add */
 #ifdef DHT
   GET_HTABLE,
 #endif
@@ -70,7 +81,12 @@ enum Work {
 #ifdef DHT
   GET_HTABLE_REPLY,
 #endif
-  GET_REPLY
+  GET_REPLY,
+  /* add ergeda add */
+  TYPE_REPLY,
+  JUST_READ_REPLY,
+  SET_CACHE_REPLY
+  /* add ergeda add */
 };
 
 enum Status {
@@ -108,6 +124,15 @@ typedef int Flag;
 #define FENCE (1 << 12)
 #define NOT_CACHE (1 << 13)
 #define GFUNC (1 << 14)
+/* add ergeda add */
+#define Msi (1 << 15)
+#define Read_only (1 << 16)
+#define Read_mostly (1 << 17)
+#define Access_exclusive (1 << 18)
+#define Write_exclusive (1 << 19)
+#define Write_shared (1 << 20)
+#define Add_list (1 << 21) //表示是第一次访问，需要加入shared_list(read_mostly)
+/* add ergeda add */
 
 #define MASK_ID 1
 #define MASK_OP 1 << 1
@@ -156,7 +181,7 @@ struct WorkRequest {
   atomic<int> counter;  //maybe negative in Write Case 4
 
   WorkRequest* parent;
-  WorkRequest* next;
+  WorkRequest* next; //
   WorkRequest* dup;
 
   LockWrapper lock_;

@@ -49,6 +49,59 @@ int Worker::ProcessLocalRead(WorkRequest* wr) {
         return IN_TRANSITION;
       }
 
+      /* add ergeda add */
+      
+      DataState Ds = directory.GetDataState(entry);
+      GAddr Cur_owner = directory.GetOwner(entry);
+
+      if (Ds != MSI) {
+        if (Ds == ACCESS_EXCLUSIVE) {
+          if (WID(Cur_owner) == GetWorkerId()) { // owner == home_node
+            GAddr gs = i > start ? i : start;
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+            memcpy(ls, ToLocal(gs), len); //直接复制就行
+          }
+          else { //owner != home_node, send to owner_node
+            // 新建一个cache来存储，回来之后删掉。
+            //Just_for_test("Local Read", wr);
+            cache.lock(i);
+            CacheLine * cline = nullptr;
+            cline = cache.SetCLine(i); //temporary , just for write_with_imm
+            cache.unlock(i);
+
+            WorkRequest* lwr = new WorkRequest(*wr);
+            lwr->counter = 0;
+            Client* cli = GetClient(Cur_owner);
+            lwr->op = JUST_READ;
+            lwr->addr = i;
+            lwr->size = BLOCK_SIZE;
+            lwr->ptr = cline->line;
+            lwr->parent = wr;
+
+            wr->counter++;
+            wr->is_cache_hit_ = false;
+            SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+          }
+
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+
+        else if (Ds == READ_MOSTLY) { //read_mostly, 这种情况直接读就行，home_node有最新数据
+          GAddr gs = i > start ? i : start;
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          memcpy(ls, ToLocal(gs), len); //直接复制就行
+
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+      }
+      /* add ergeda add */
+
       if (unlikely(s == DIR_DIRTY)) {
         WorkRequest* lwr = new WorkRequest(*wr);
         lwr->counter = 0;
@@ -180,6 +233,110 @@ int Worker::ProcessLocalWrite(WorkRequest* wr) {
         wr->unlock();
         return IN_TRANSITION;
       }
+
+      /* add ergeda add */
+      
+      DataState Ds = directory.GetDataState(entry);
+      GAddr Cur_owner = directory.GetOwner(entry);
+
+      if (Ds != MSI) {
+        if (Ds == ACCESS_EXCLUSIVE) {
+          if (WID(Cur_owner) == GetWorkerId()) { // owner == home_node, 直接在本地写
+            GAddr gs = i > start ? i : start;
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+            memcpy(ToLocal(gs), ls, len);
+          }
+
+          else { //owner != home_node, send to owner_node，转发给owner_node去写。
+            WorkRequest* lwr = new WorkRequest(*wr);
+            lwr->counter = 0;
+            Client* cli = GetClient(Cur_owner);
+            GAddr gs = i > start ? i : start;
+            char buf[BLOCK_SIZE];
+            
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start)); //要写入的数据，该缓存块对应的数据
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs); // 长度
+            memcpy(buf, ls, len); // 
+
+            lwr->op = JUST_WRITE;
+            lwr->addr = gs;
+            lwr->ptr = buf;
+            lwr->size = len;
+
+            if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
+              if (!wr->IsACopy()) {
+                wr->unlock();
+                wr = wr->Copy();
+                wr->lock();
+              }
+            }
+
+            lwr->parent = wr;
+            lwr->counter = 0;
+            wr->counter ++; // 存在一个远程请求没搞定
+            SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+          }
+
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+
+        else if (Ds == READ_MOSTLY) {
+          //Just_for_test("home_node RmWrite", wr);
+          //ProcessrmWrite();
+          entry->state = DIR_TO_SHARED; //等待副本都无效
+
+          GAddr gs = i > start ? i : start;
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          memcpy(ToLocal(gs), ls, len);
+
+          list<GAddr>& shared = directory.GetSList(entry);
+          if (shared.size()) {
+
+            if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
+              if (!wr->IsACopy()) {
+                wr->unlock();
+                wr = wr->Copy();
+                wr->lock();
+              }
+            }
+
+            WorkRequest* lwr = new WorkRequest(*wr);
+            lwr->lock();
+            lwr->counter = 0;
+            lwr->op = RM_FORWARD;
+            lwr->addr = i;
+            lwr->parent = wr;
+            
+            lwr->id = GetWorkPsn();
+
+            lwr->counter = shared.size();
+            wr->counter ++;
+
+            bool first = true;
+            for (auto it = shared.begin(); it != shared.end(); it++) {
+              Client* cli = GetClient(*it);
+              if (first) {
+                AddToPending(lwr->id, lwr);
+                first = false;
+              }
+              SubmitRequest(cli, lwr);
+            }
+            lwr->unlock();
+          }
+          else {
+            entry->state = DIR_SHARED;
+          }
+
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+      }
+      /* add ergeda add */
 
       /*
        * since we cannot guarantee that generating a completion indicates
@@ -564,4 +721,20 @@ int Worker::ProcessLocalUnLock(WorkRequest* wr) {
 #endif
   return SUCCESS;
 }
+/* add ergeda add */
+void Worker::CreateCache(WorkRequest * wr, DataState Dstate) {
+  //Just_for_test("CreateCache", wr);
+  GAddr start = wr->addr;
+  GAddr start_blk = TOBLOCK(start);
+  GAddr end = GADD(start, wr->size);
 
+  for (GAddr i = start_blk; i < end; ) {
+    GAddr nextb = BADD(i, 1);
+    cache.lock(i);
+    CacheLine *cline = nullptr;
+    cline = cache.SetCLine(i);
+    cache.unlock(i);
+    i = nextb;
+  }
+}
+/* add ergeda add */

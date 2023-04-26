@@ -102,4 +102,17 @@ using namespace std;
 
 #define MAX_MEM_STATS_SIZE  64 //10+10+20+20+4 in decimal
 
+/* add ergeda add */
+
+enum DataState {
+  MSI=0,
+  READ_ONLY,
+  READ_MOSTLY,
+  ACCESS_EXCLUSIVE,
+  WRITE_EXCLUSIVE,
+  WRITE_SHARED
+};
+
+/* add ergeda add */
+
 #endif /* INCLUDE_SETTINGS_H_ */

@@ -1,6 +1,7 @@
 // Copyright (c) 2018 The GAM Authors 
 
 void Worker::ProcessRemoteRead(Client* client, WorkRequest* wr) {
+  //Just_for_test("remote read", wr);
   epicAssert(IsLocal(wr->addr));
 #ifdef SELECTIVE_CACHING
   void* laddr = ToLocal(TOBLOCK(wr->addr));
@@ -900,3 +901,175 @@ void Worker::ProcessRemoteWriteReply(Client* client, WorkRequest* wr) {
   wr = nullptr;
 }
 
+/* add ergeda add */
+
+void Worker::ProcessRemotePrivateRead (Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessRemotePrivateRead", wr);
+  GAddr blk = TOBLOCK(wr->addr);
+  if (IsLocal(blk)) { //home_node = owner_node，直接用内存写，这里需要上锁吗？对directory上锁？
+    directory.lock((void*) ToLocal(blk));
+    client->WriteWithImm(wr->ptr, ToLocal(blk), wr->size, wr->id);
+    directory.unlock((void*) ToLocal(blk));
+  }
+  else {
+    cache.lock(blk);
+    CacheLine* cline = cache.GetCLine(blk); //考虑新建一个专门存单副本的数据结构？仿照这个cache可能会好些，永远不会被evict
+    if (!cline) { // 相当于owner节点单副本却没数据？？
+      epicLog(LOG_WARNING, "owner_node does not have data ?!?!");
+    }
+    else { //存在单副本缓存数据，直接转发回去
+      client->WriteWithImm(wr->ptr, cline->line, wr->size, wr->id);
+    }
+    cache.unlock(blk);
+  }
+
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteRmRead(Client* client, WorkRequest* wr) {
+  //Just_for_test("ProcessRemoteRmRead", wr);
+  if (!IsLocal(wr->addr)) {
+    epicLog(LOG_WARNING, "rm_read transfer to wrong node");
+  }
+
+  void * laddr = (void *) ToLocal(wr->addr);
+  directory.lock(laddr);
+  DirEntry * entry = directory.GetEntry(laddr);
+
+  if (directory.InTransitionState(entry)) { //中间态不能传数据
+    AddToServeRemoteRequest(wr->addr, client, wr);
+    epicLog(LOG_INFO, "directory in Transition State %d",
+        directory.GetState(entry));
+    directory.unlock(laddr);
+    return;
+  }
+
+  entry->shared.push_back(client->ToGlobal(wr->ptr));
+  client->WriteWithImm(wr->ptr, laddr, wr->size, wr->id);
+
+  directory.unlock(laddr);
+  
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteSetCache (Client * client, WorkRequest * wr) {
+
+//  epicLog(LOG_WARNING, "got to remote!");
+//  epicLog(LOG_WARNING, "cur_worker : %d", GetWorkerId());
+//  epicLog(LOG_WARNING, "are you kidding me");
+
+//  Just_for_test(wr);
+  
+  DataState Dstate = GetDataState(wr->flag);
+  GAddr Owner = ( (long long)(wr->arg) << 48);
+
+  CreateDir(wr, Dstate, Owner);
+  CreateCache(wr, Dstate);
+
+  wr->op = SET_CACHE_REPLY;
+  SubmitRequest(client, wr);
+
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteRmWrite(Client* client, WorkRequest* wr) {
+  //Just_for_test("ProcessRemoteRmWrite", wr);
+  if (!IsLocal(wr->addr)) {
+    epicLog(LOG_WARNING, "rm_write to wrong home_node");
+  }
+
+  GAddr blk = TOBLOCK(wr->addr); //wr->addr 不一定等于 blk
+  void * laddr = (void *) ToLocal(wr->addr);
+  directory.lock(ToLocal(blk));
+  DirEntry * entry = directory.GetEntry(ToLocal(blk));
+  if (entry == nullptr) {
+    epicLog(LOG_WARNING, "rm_write no entry!");
+  }
+
+  if (directory.InTransitionState(entry)) { //中间态不能传数据
+    AddToServeRemoteRequest(blk, client, wr);
+    epicLog(LOG_INFO, "directory in Transition State %d",
+        directory.GetState(entry));
+    directory.unlock(ToLocal(blk));
+    return;
+  }
+
+  entry->state = DIR_TO_SHARED; //中间态，等待所有副本节点确认
+  memcpy(laddr, wr->ptr, wr->size); //直接写入数据
+  void * Gptr = (void*)wr->next; //request_node cache的cline->line
+
+  if (wr->flag & Add_list) { //第一次访问，需加入shared_list
+    entry->shared.push_back(client->ToGlobal(Gptr));
+  }
+  list<GAddr>& shared = directory.GetSList(entry);
+  WorkRequest* lwr = new WorkRequest(*wr);
+  lwr->lock();
+  lwr->counter = 0;
+  lwr->op = RM_FORWARD;
+  lwr->addr = blk; //之前是传buf过来，这里要改的是cache，得字节对齐
+  lwr->parent = wr;
+  
+  lwr->id = GetWorkPsn();
+
+  lwr->counter = shared.size();
+
+  bool first = true;
+  for (auto it = shared.begin(); it != shared.end(); it++) {
+    Client* cli = GetClient(*it);
+    if (cli == client) {
+      lwr->counter--;
+      continue;
+    }
+    epicLog(LOG_DEBUG, "invalidate forward (%d) cache from worker %d",
+        lwr->op, cli->GetWorkerId());
+    if (first) {
+      AddToPending(lwr->id, lwr);
+      first = false;
+    }
+    SubmitRequest(cli, lwr);
+  }
+
+  if (lwr->counter) { //存在除了request_node之外的副本需要写。
+    lwr->unlock();
+    directory.unlock(ToLocal(blk));
+    return;  //return and wait for reply
+  } else { //不用等了，直接可以写回。
+    lwr->unlock();
+    delete lwr;
+    lwr = nullptr;
+    entry->state = DIR_SHARED;
+    client->WriteWithImm(Gptr, ToLocal(blk), BLOCK_SIZE, wr->id);
+    directory.unlock(ToLocal(blk));
+    delete wr;
+    wr = nullptr;
+  }
+}
+
+void Worker::ProcessRemoteRmForward(Client * client, WorkRequest * wr){
+  //Just_for_test("ProcessRemoteRmForward", wr);
+  cache.lock(wr->addr);
+  CacheLine * cline = nullptr;
+  cline = cache.GetCLine(wr->addr);
+  if (cline == nullptr) {
+    epicLog(LOG_WARNING, "RmForward, owner_node do not have cache ??");
+  }
+  if (cache.InTransitionState(cline)) {
+    //epicLog(LOG_WARNING, "Deadlock rmforward and rmwrite");
+    //deadlock(), 其他节点写的时候本地节点也提交了写请求传到Home_node。
+    //感觉这里deadlock问题不大，RM_DONE的时候判断下是否是TO_INVALID就好
+  }
+  else {
+    cline->state = CACHE_TO_SHARED;
+  }
+  wr->op = RM_Done;
+  AddToPending(-(wr->id), wr);
+
+  client->WriteWithImm(nullptr, nullptr, 0, wr->id); //告诉request-node已经写完了。
+  cache.unlock(wr->addr);
+  //Just_for_test("already write", wr);
+}
+
+/* add ergeda add */

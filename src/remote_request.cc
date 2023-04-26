@@ -127,6 +127,17 @@ void Worker::ProcessRemoteMalloc(Client* client, WorkRequest* wr) {
     epicLog(LOG_DEBUG,
         "allocated %d at address %lx, base = %lx, wid = %d, gaddr = %lx",
         wr->size, addr, base, GetWorkerId(), wr->addr);
+    
+    /* to do */
+    /* add ergeda add */
+    DataState Dstate = GetDataState(wr->flag);
+//    if (Dstate != MSI) {
+      GAddr Owner = ( (int)(wr->arg) << 48);
+  //    if (Dstate != DataState::MSI) {
+        CreateDir(wr, Dstate, Owner); //home_node需要建立directory
+  //    }
+//    }
+    /* add ergeda add */
   } else {
     wr->status = ALLOC_ERROR;
   }
@@ -212,6 +223,125 @@ void Worker::ProcessRemoteEvictDirty(Client* client, WorkRequest* wr) {
   wr = nullptr;
 }
 
+/* add ergeda add */
+void Worker::ProcessRemoteReadType (Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessRemoteReadType", wr);
+  if (!IsLocal(wr->addr)) {
+    epicLog(LOG_WARNING, "bug , cannot get to home_node\n");
+  }
+
+  char buf[16];
+  wr->ptr = buf;
+  wr->size = 12;
+  wr->op = TYPE_REPLY;
+
+  void* laddr = ToLocal(TOBLOCK(wr->addr));
+  epicLog(LOG_WARNING, "addr : %lld, laddr : %llx\n", TOBLOCK(wr->addr), laddr);
+  directory.lock(laddr);
+  DirEntry* entry = directory.GetEntry(laddr);
+  DataState Dstate = directory.GetDataState(entry);
+  GAddr Owner = directory.GetOwner(entry);
+  directory.unlock(laddr);
+
+  appendInteger(buf, (int)Dstate, Owner);
+  SubmitRequest(client, wr);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteTypeReply (Client * client, WorkRequest * wr) {
+  //Just_for_test ("ProcessRemoteTypeReply", wr);
+  int Tmp;
+  GAddr Owner;
+  readInteger((char*) wr->ptr, Tmp, Owner);
+  DataState Dstate = (DataState)Tmp;
+
+  GAddr addr = TOBLOCK(wr->addr);
+  directory.lock((void*)addr);
+  DirEntry * entry = directory.GetEntry((void*)addr);
+  directory.SetDataState(entry, Dstate);
+  directory.SetMetaOwner(entry, Owner);
+  directory.SetShared(entry);
+  directory.unlock((void*)addr);
+
+  int ret = ErasePendingWork(wr->id);
+  ProcessToServeRequest(wr);
+  delete wr; //合理究竟要不要加这句
+  wr = nullptr;
+}
+
+void Worker::ProcessRemotePrivateReadReply (Client * client, WorkRequest * wr) {
+  WorkRequest* parent = wr->parent;
+  parent->lock();
+
+  GAddr pend = GADD(parent->addr, parent->size);
+  GAddr end = GADD(wr->addr, wr->size);
+  GAddr gs = wr->addr > parent->addr ? wr->addr : parent->addr;
+  void* ls = (void*) ((ptr_t) parent->ptr + GMINUS(gs, parent->addr));
+  void* cs = (void*) ((ptr_t) wr->ptr + GMINUS(gs, wr->addr));
+  Size len = end > pend ? GMINUS(pend, gs) : GMINUS(end, gs);
+  memcpy(ls, cs, len);
+
+  if (--parent->counter == 0) {  //read all the data
+    parent->unlock();
+    Notify(parent);
+  } else {
+    parent->unlock();
+  }
+
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemotePrivateWrite (Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessRemotePrivateWrite", wr);
+  GAddr blk = TOBLOCK(wr->addr);
+  if (IsLocal(wr->addr)) { // home_node = owner_node
+    void * laddr = ToLocal(wr->addr);
+    directory.lock(ToLocal(blk) ); //addr有可能不是block_size的整数倍
+    memcpy(laddr, wr->ptr, wr->size);
+    directory.unlock(ToLocal(blk) );
+  }
+  else { //home_node != owner_node 更改cache
+    cache.lock(blk);
+    CacheLine * cline = nullptr;
+    cline = cache.GetCLine(wr->addr);
+    if (cline == nullptr) {
+      epicLog(LOG_WARNING, "owner_node do not have cache ??");
+    }
+    void * laddr = cline->line + GMINUS(wr->addr, blk);
+    memcpy (laddr, wr->ptr, wr->size);
+    cache.unlock(blk);
+  }
+
+  client->WriteWithImm(nullptr, nullptr, 0, wr->id); //告诉request-node已经写完了。
+
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteSetCacheReply(Client* client, WorkRequest* wr) {
+  //Just_for_test("ProcessRemoteSetCacheReply", wr);
+  WorkRequest* pwr = GetPendingWork(wr->id);
+
+  pwr->status = SUCCESS;
+  //	pending_works.erase(wr->id);
+  int ret = ErasePendingWork(wr->id);
+  epicAssert(ret);
+  if (Notify(pwr)) {
+    epicLog(LOG_FATAL, "cannot wake up the app thread");
+  }
+  delete wr;
+  wr = nullptr;
+}
+/*
+void whyO() {
+  int a = 1, b = 2;
+  printf ("%d\n", a + b);
+}
+*/
+/* add ergeda add */
+
 void Worker::ProcessRequest(Client* client, WorkRequest* wr) {
   epicLog(LOG_DEBUG, "process remote request %d from worker %d", wr->op,
       client->GetWorkerId());
@@ -255,7 +385,7 @@ void Worker::ProcessRequest(Client* client, WorkRequest* wr) {
         epicAssert(IsLocal(wr->addr));
         Size size = sb.sb_free(ToLocal(wr->addr));
         ghost_size -= size;
-        if (abs(ghost_size.load()) > conf->ghost_th)
+        if (abs( (long long) ghost_size.load()) > conf->ghost_th)
           SyncMaster();
         delete wr;
         wr = nullptr;
@@ -312,6 +442,63 @@ void Worker::ProcessRequest(Client* client, WorkRequest* wr) {
         ProcessRemoteEvictDirty(client, wr);
         break;
       }
+    /* add ergeda add */
+    case JUST_READ:
+      {
+        ProcessRemotePrivateRead(client, wr);
+        break;
+      }
+    case READ_TYPE:
+      {
+        ProcessRemoteReadType (client, wr);
+        break;
+      }
+    case TYPE_REPLY:
+      {
+        ProcessRemoteTypeReply (client, wr);
+        break;
+      }
+    case JUST_READ_REPLY:
+      {
+        ProcessRemotePrivateReadReply (client, wr);
+        break;
+      }
+    case JUST_WRITE:
+      {
+        ProcessRemotePrivateWrite (client, wr);
+        break;
+      }
+    case SET_CACHE:
+      {
+        ProcessRemoteSetCache (client, wr);
+        break;
+      }
+    case SET_CACHE_REPLY:
+      {
+        ProcessRemoteSetCacheReply( client, wr);
+        break;
+      }
+    case RM_READ:
+      {
+        ProcessRemoteRmRead(client, wr);
+        break;
+      }
+    case RM_WRITE:
+      {
+        ProcessRemoteRmWrite(client, wr);
+        break;
+      }
+    case RM_FORWARD:
+      {
+        ProcessRemoteRmForward(client, wr);
+        break;
+      }
+    case TEST_RDMA:
+      {
+        TestRecv(client, wr);
+        break;
+      }
+    /*  add ergeda add */
 #ifdef NOCACHE
     case RLOCK:
       ProcessRemoteRLock(client, wr);
@@ -340,3 +527,33 @@ void Worker::ProcessRequest(Client* client, WorkRequest* wr) {
   }
 }
 
+/* add ergeda add */
+void Worker::TestSend(GAddr addr) {
+  Client * cli = GetClient(addr);
+  WorkRequest * wr = new WorkRequest();
+  wr->op = TEST_RDMA;
+  CacheLine * cline = nullptr;
+  cline = cache.SetCLine(addr);
+  wr->ptr = cline->line;
+  wr->addr = addr;
+  SubmitRequest(cli, wr, ADD_TO_PENDING | REQUEST_SEND);
+}
+void Worker::TestPending() {
+
+}
+void Worker::TestRecv(Client * client, WorkRequest * wr) {
+  if (wr->addr == 0) {
+    //epicLog(LOG_WARNING, "submitrequest, recv\n");
+    delete wr;
+    wr = nullptr;
+    return;
+  }
+  //client->WriteWithImm(wr->ptr, ToLocal(wr->addr), BLOCK_SIZE, wr->id);
+  wr->addr = 0;
+  //for (int i = 0; i < 100000; ++i) SubmitRequest(client, wr);
+  client->WriteWithImm(nullptr, nullptr, 0, wr->id, wr->id, true);
+}
+void Worker::TestProcessing() {
+
+}
+/* add ergeda add */

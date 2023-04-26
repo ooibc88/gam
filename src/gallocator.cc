@@ -21,10 +21,12 @@ GAlloc::GAlloc(Worker* worker)
     : wh(new WorkerHandle(worker)) {
 }
 
-GAddr GAlloc::Malloc(const Size size, Flag flag) {
+//GAddr GAlloc::Malloc(const Size size, Flag flag) {
+GAddr GAlloc::Malloc(const Size size, Flag flag, int Owner) {
   return Malloc(size, Gnullptr, flag);
 }
-GAddr GAlloc::Malloc(const Size size, GAddr base, Flag flag) {
+//GAddr GAlloc::Malloc(const Size size, GAddr base, Flag flag) {
+GAddr GAlloc::Malloc(const Size size, GAddr base, Flag flag, int Owner) {
 #ifdef LOCAL_MEMORY_HOOK
   void* laddr = zmalloc(size);
   return (GAddr)laddr;
@@ -33,6 +35,9 @@ GAddr GAlloc::Malloc(const Size size, GAddr base, Flag flag) {
   wr.op = MALLOC;
   wr.flag = flag;
   wr.size = size;
+  /* add ergeda add */
+  wr.arg = (uint64_t) Owner; //arg没啥用，刚好用来存储owner
+  /* add ergeda add */
 
   if (base) {
     wr.addr = base;

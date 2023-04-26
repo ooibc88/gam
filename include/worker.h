@@ -268,6 +268,47 @@ class Worker : public Server {
   void ProcessPendingInvalidateForward(Client* cli, WorkRequest* wr);
   void ProcessToServeRequest(WorkRequest* wr);
 
+  /* add ergeda add */
+  void TestSend(GAddr addr); //测试write_with_imm和普通workrequest的速度，以及执行流程如何
+  void TestPending(); //
+  void TestRecv(Client * client, WorkRequest * wr); //
+  void TestProcessing(); //
+
+  void ProcessPendingPrivateWrite(Client * client, WorkRequest * wr); //用来处理access_exclusive写转发的确认完成的消息。
+  void ProcessPendingPrivateRead(Client * client, WorkRequest * wr); //用来处理access_exclusive读转发的确认完成的消息。
+  void ProcessPendingRmRead(Client * client, WorkRequest * wr); //用来处理read_mostly读转发确认完成的消息。
+  void ProcessPendingRmWrite(Client * client, WorkRequest * wr); //用来处理read_mostly写完成的消息(request_node)
+  void ProcessPendingRmForward(Client * client, WorkRequest * wr); //用来处理read_mostly转发写确认完成的消息(home_node)
+  void ProcessPendingRmDone(Client * client, WorkRequest * wr); //用来处理read_mostly写确认完成的消息(other_node)
+
+  void ProcessRemoteReadType (Client * client, WorkRequest * wr);
+  void ProcessRemoteTypeReply(Client * client, WorkRequest * wr);
+  void ProcessRemotePrivateRead(Client * client, WorkRequest * wr);
+  void ProcessRemotePrivateReadReply (Client * client, WorkRequest * wr);
+  void ProcessRemotePrivateWrite(Client * client, WorkRequest * wr);
+  void ProcessRemoteSetCache (Client * client, WorkRequest * wr); //malloc之后去owner_node节点建立目录和缓存（若为access_exclusive)
+  void ProcessRemoteSetCacheReply(Client* client, WorkRequest* wr); //SetCache的reply，返回提醒malloc结束
+  void ProcessRemoteRmRead(Client* client, WorkRequest* wr); //read_mostly的read,加入shared_list并返回数据
+  void ProcessRemoteRmWrite(Client* client, WorkRequest* wr); //从非home_node节点发给home_node的read_mostly类型的写操作
+  void ProcessRemoteRmForward(Client * client, WorkRequest * wr); //从home_node节点发给所有拥有副本节点的read_mostly类型的转发写操作。
+
+  void CreateDir (WorkRequest * wr, DataState Cur_state=DataState::MSI, GAddr Owner=0); //每次malloc在home_node上和owner_node都需要建立directory.
+  void CreateCache (WorkRequest * wr, DataState Dstate=DataState::MSI); //每次状态转换，需要在owner_node上建立cache，除非home_node=owner_node
+
+  DataState GetDataState (int flag) {
+    if (flag & Access_exclusive) return DataState::ACCESS_EXCLUSIVE;
+    if (flag & Msi) return DataState::MSI;
+    if (flag & Write_exclusive) return DataState::WRITE_EXCLUSIVE;
+    if (flag & Write_shared) return DataState::WRITE_SHARED;
+    if (flag & Read_only) return DataState::READ_ONLY;
+    if (flag & Read_mostly) return DataState::READ_MOSTLY;
+    return DataState::MSI;
+  }
+  void Just_for_test (char * Func, WorkRequest * wr) { // for debug
+    epicLog (LOG_WARNING, "Worker %d implement Func : %s with op : %d, addr : %llx, flag : %x, size : %d", GetWorkerId(), Func, wr->op, wr->addr, wr->flag, wr->size);
+  }
+  /* add ergeda add */
+
 #ifdef DHT
   int ProcessLocalHTable(WorkRequest* wr);
 	void ProcessRemoteHTable(Client* client, WorkRequest* wr);

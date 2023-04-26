@@ -675,6 +675,32 @@ void Worker::ProcessPendingRequest(Client* cli, WorkRequest* wr) {
       ProcessPendingInvalidateForward(cli, wr);
       break;
     }
+    /* add ergeda add */
+    case JUST_WRITE: {
+      ProcessPendingPrivateWrite(cli, wr);
+      break;
+    }
+    case JUST_READ: {
+      ProcessPendingPrivateRead (cli, wr);
+      break;
+    }
+    case RM_READ: {
+      ProcessPendingRmRead (cli, wr);
+      break;
+    }
+    case RM_WRITE: {
+      ProcessPendingRmWrite (cli, wr);
+      break;
+    }
+    case RM_FORWARD: {
+      ProcessPendingRmForward (cli, wr);
+      break;
+    }
+    case RM_Done: {
+      ProcessPendingRmDone (cli, wr);
+      break;
+    }
+    /* add ergeda add */
     default:
       epicLog(LOG_WARNING, "unrecognized work request %d", wr->op);
       exit(-1);
@@ -693,7 +719,214 @@ void Worker::ProcessRequest(Client* cli, unsigned int work_id) {
   epicLog(LOG_DEBUG, "callback function work_id = %u, reply from %d", work_id,
           cli->GetWorkerId());
   WorkRequest* wr = GetPendingWork(work_id);
+  /* add ergeda add */
+  if (wr->op == TEST_RDMA) {
+    //epicLog(LOG_WARNING, "write_with_imm recv\n");
+    return;
+  }
+  /* add ergeda add */
   epicAssert(wr);
   epicAssert(wr->id == work_id);
   ProcessPendingRequest(cli, wr);
 }
+
+/* add ergeda add */
+
+void Worker::ProcessPendingPrivateRead(Client * client, WorkRequest * wr) {
+  //Just_for_test("processpendingprivateread", wr);
+  WorkRequest* parent = wr->parent;
+  parent->lock();
+
+  cache.lock(wr->addr);
+  GAddr pend = GADD(parent->addr, parent->size);
+  GAddr end = GADD(wr->addr, wr->size);
+  GAddr gs = wr->addr > parent->addr ? wr->addr : parent->addr;
+  void* ls = (void*) ((ptr_t) parent->ptr + GMINUS(gs, parent->addr));
+  void* cs = (void*) ((ptr_t) wr->ptr + GMINUS(gs, wr->addr));
+  Size len = end > pend ? GMINUS(pend, gs) : GMINUS(end, gs);
+  memcpy(ls, cs, len);
+
+  
+  CacheLine * cline = cache.GetCLine(wr->addr); // delete temporary cache
+  cache.DeleteCache(cline);
+  cache.unlock(wr->addr);
+
+  if ( (--parent->counter) == 0) {  //read all the data
+    parent->status = SUCCESS;
+    parent->unlock();
+    Notify(parent);
+  } else {
+    parent->unlock();
+  }
+
+  int ret = ErasePendingWork(wr->id);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingRmRead(Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessPendingRmRead", wr);
+  WorkRequest * parent = wr->parent;
+  parent->lock();
+
+  cache.lock(wr->addr);
+  GAddr pend = GADD(parent->addr, parent->size);
+  GAddr end = GADD(wr->addr, wr->size);
+  GAddr gs = wr->addr > parent->addr ? wr->addr : parent->addr;
+  void* ls = (void*) ((ptr_t) parent->ptr + GMINUS(gs, parent->addr));
+  void* cs = (void*) ((ptr_t) wr->ptr + GMINUS(gs, wr->addr));
+  Size len = end > pend ? GMINUS(pend, gs) : GMINUS(end, gs);
+  memcpy(ls, cs, len);
+
+  
+  CacheLine * cline = cache.GetCLine(wr->addr);
+  if (cline == nullptr) {
+    epicLog(LOG_WARNING, "rm_read pending_time no cache?");
+  }
+  cline->state = CACHE_SHARED;
+  cache.unlock(wr->addr);
+
+  if ( (-- parent->counter) == 0) {
+    parent->status = SUCCESS;
+    parent->unlock();
+    Notify(parent);
+  }
+  else {
+    parent->unlock();
+  }
+  
+  ProcessToServeRequest(wr);
+  int ret = ErasePendingWork(wr->id);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingPrivateWrite(Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessPendingPrivateWrite", wr);
+  WorkRequest* parent = wr->parent;
+  parent->lock();
+
+  if ( (-- parent->counter) == 0) {
+    parent->status = SUCCESS;
+    parent->unlock();
+    Notify(parent);
+  }
+  else {
+    parent->unlock();
+  }
+  int ret = ErasePendingWork(wr->id);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingRmWrite(Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessPendingRmWrite", wr);
+  GAddr blk = TOBLOCK(wr->addr); //wr->addr 不一定等于 blk
+  cache.lock(blk);
+  CacheLine * cline = nullptr;
+  cline = cache.GetCLine(blk);
+  if (cline == nullptr) {
+    epicLog(LOG_WARNING, "rmwrite pending no cache");
+  }
+  cline->state = CACHE_SHARED;
+  cache.unlock(blk);
+
+  WorkRequest* parent = wr->parent;
+  parent->lock();
+
+  if ( (-- parent->counter) == 0) {
+    parent->status = SUCCESS;
+    parent->unlock();
+    Notify(parent);
+  }
+  else {
+    parent->unlock();
+  }
+
+  int ret = ErasePendingWork(wr->id);
+  epicAssert(ret);
+  ProcessToServeRequest(wr);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingRmForward(Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessPendingRmForward", wr);
+  WorkRequest * parent = wr->parent;
+  parent->lock();
+  wr->lock();
+  if ( (--wr->counter) == 0) {
+    if (parent->op == RM_WRITE) { //request_node != home_node
+      void * laddr = ToLocal(wr->addr);
+      directory.lock(laddr);
+      DirEntry * entry = directory.GetEntry(laddr);
+      entry->state = DIR_SHARED; // 所有副本都invalid了，可以修改状态
+      list<GAddr>& shared = directory.GetSList(entry);
+      parent->unlock();
+      for (auto it = shared.begin(); it != shared.end(); it++) {
+        Client* cli = GetClient(*it);
+        if (WID(*it) == parent->wid) {
+          cli->WriteWithImm(cli->ToLocal(*it), laddr, BLOCK_SIZE, parent->id); //通知request_node已完成
+          continue;
+        }
+        else {
+          cli->WriteWithImm(cli->ToLocal(*it), laddr, BLOCK_SIZE, -(wr->id));
+        }
+      }
+      directory.unlock(laddr);
+      int ret = ErasePendingWork(wr->id);
+      wr->unlock();
+      parent->unlock();
+      
+      ProcessToServeRequest(wr);
+      delete wr;
+      wr = nullptr;
+      return;
+    }
+    else { //request_node == home_node
+      void * laddr = ToLocal(wr->addr);
+      directory.lock(laddr);
+      DirEntry * entry = directory.GetEntry(laddr);
+      entry->state = DIR_SHARED; // 所有副本都invalid了，可以修改状态
+      list<GAddr>& shared = directory.GetSList(entry);
+      for (auto it = shared.begin(); it != shared.end(); it++) {
+        Client* cli = GetClient(*it);
+        cli->WriteWithImm(cli->ToLocal(*it), laddr, BLOCK_SIZE, -(wr->id));
+      }
+      directory.unlock(laddr);
+
+      if ( (--parent->counter) == 0) {
+        parent->status = SUCCESS;
+        parent->unlock();
+        Notify(parent);
+      }else {
+        parent->unlock();
+      }
+
+      int ret = ErasePendingWork(wr->id);
+      wr->unlock();
+      ProcessToServeRequest(wr);
+      delete wr;
+      wr = nullptr;
+      return;
+    }
+  }
+
+  parent->unlock();
+  wr->unlock();
+}
+
+void Worker::ProcessPendingRmDone(Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessPendingRmDone", wr);
+  cache.lock(wr->addr);
+  CacheLine * cline = nullptr;
+  cline = cache.GetCLine(wr->addr);
+  if (cline->state != CACHE_TO_INVALID) cline->state = CACHE_SHARED;
+  cache.unlock(wr->addr);
+
+  int ret = ErasePendingWork(-(wr->id));
+  ProcessToServeRequest(wr);
+  delete wr;
+  wr = nullptr;
+}
+/* add ergeda add */

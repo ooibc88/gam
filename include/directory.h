@@ -23,6 +23,10 @@ struct DirEntry {
   DirState state = DIR_UNSHARED;
   list<GAddr> shared;
   ptr_t addr;
+  /* add ergeda add */
+  DataState Dstate = DataState::MSI;
+  GAddr owner;
+  /* add ergeda add */
   //if lock == 0, no one is holding the lock. otherwise, there are #lock ones holding the lock
   //but if lock = EXCLUSIVE_LOCK_TAG, it is a exclusive lock
   //int lock = 0;
@@ -103,6 +107,82 @@ class Directory {
   DirEntry* GetEntry(void* ptr) {
     return GetEntry((ptr_t) ptr);
   }
+
+  /* add ergeda add */
+
+/*  MetaEntry* GetMeta(GAddr addr) {
+    if (Meta.count(addr)) {
+      return Meta.at(addr);
+    }
+    else return nullptr;
+  }
+*/
+  DataState GetDataState (DirEntry* Entry) {
+    if (Entry == nullptr) {
+      //epicLog(LOG_WARNING, "MetaEntry == nullptr\n");
+      return DataState::MSI;
+    }
+    return Entry->Dstate;
+  }
+
+  DataState GetDataState (GAddr addr) {
+    return GetDataState (GetEntry(addr));
+  }
+
+  GAddr GetOwner (DirEntry * Entry) {
+    return Entry->owner;
+  }
+
+  GAddr GetOwner (GAddr addr) {
+    return GetOwner (GetEntry(addr));
+  }/*
+  void CreateMetaEntry(GAddr addr, DataState Dstate=DataState::MSI, GAddr Owner=1) {
+    MetaEntry * Entry = GetMeta(addr);
+    if (Entry == nullptr) {
+      Entry = new MetaEntry();
+      Entry->Dstate = Dstate;
+      Entry->Last_def = 0;
+      Entry->owner = Owner;
+      Meta[addr] = Entry;
+    }
+    else {
+      epicLog(LOG_WARNING, "meta already exist\n");
+    }
+  }
+*/
+  void SetDataState(DirEntry * Entry, DataState Dstate) {
+    Entry->Dstate = Dstate;
+  }
+
+  void SetMetaOwner(DirEntry * Entry, GAddr Owner) {
+    Entry->owner = Owner;
+  }
+
+  void CreateEntry (void* ptr, DataState Cur_state=DataState::MSI, GAddr Owner=1) {
+    ptr_t block = TOBLOCK(ptr);
+    DirEntry* entry = GetEntry(ptr);
+    if (entry == nullptr) {
+      entry = new DirEntry();
+      entry->state = DIR_UNSHARED;
+      entry->Dstate = Cur_state;
+      entry->addr = block;
+      entry->owner = Owner;
+      dir[block] = entry;
+    }
+  }
+
+  void SetShared(DirEntry * Entry) {
+    Entry->state = DIR_SHARED;
+  }
+  
+  void SetDirty(DirEntry * Entry) {
+    Entry->state = DIR_DIRTY;
+  }
+
+  void SetUnshared(DirEntry * Entry) {
+    Entry->state = DIR_UNSHARED;
+  }
+  /* add ergeda add */
 
   DirEntry* ToShared(void* ptr, GAddr addr);
   void ToShared(DirEntry* entry, GAddr addr);

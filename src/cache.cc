@@ -32,10 +32,260 @@ int Cache::ReadWrite(WorkRequest* wr) {
   if (wr->flag & TO_SERVE) {
     wr->counter--;
   }
+
+
   for (GAddr i = start_blk; i < end;) {
     epicAssert(!(wr->flag & COPY) || ((wr->flag & COPY) && (wr->flag & ASYNC)));
 
     GAddr nextb = BADD(i, 1);
+    /* add ergeda add */
+    worker->directory.lock((void*)i);
+    DirEntry * Entry = worker->directory.GetEntry((void*)i);
+    if (Entry == nullptr) { //no metadata in the first time;
+      //worker->Just_for_test("get Directory", wr);
+      worker->directory.CreateEntry((void*)i);
+      Entry = worker->directory.GetEntry((void*)i);
+      worker->directory.ToToDirty(Entry, i);
+      WorkRequest* lwr = new WorkRequest(*wr);
+
+      lwr->counter = 0;
+      lwr->op = READ_TYPE;
+      lwr->addr = i;
+
+      if (wr->flag & ASYNC) {
+        if (!wr->IsACopy()) {
+          wr->unlock();
+          wr = wr->Copy();
+          wr->lock();
+        }
+      }
+
+      wr->counter++;
+      worker->AddToServeLocalRequest(i, wr);
+      worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+      worker->directory.unlock((void*)i);
+      wr->unlock();
+      return IN_TRANSITION;
+    }
+
+    else { 
+      if (unlikely(worker->directory.InTransitionState(worker->directory.GetState(Entry)))) { // have not got datastate and owner
+        epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
+        //we increase the counter in case
+        //we false call Notify()
+        wr->counter++;
+        wr->unlock();
+        if (wr->flag & ASYNC) {
+          if (!wr->IsACopy()) {
+            //wr->unlock();
+            wr = wr->Copy();
+            //wr->lock();
+          }
+        }
+        //worker->to_serve_local_requests[i].push(wr);
+        worker->AddToServeLocalRequest(i, wr);
+        worker->directory.unlock((void*)i);
+        //wr->unlock();
+        return 1;
+      }
+    }
+
+    DataState Cur_Dstate = worker->directory.GetDataState(Entry);
+    GAddr Cur_owner = worker->directory.GetOwner(Entry);
+    
+    worker->directory.unlock((void*)i);
+    if (Cur_Dstate == DataState::ACCESS_EXCLUSIVE) {
+      if (worker->GetWorkerId() == WID(Cur_owner)) { // local_node == owner_node，直接读/写
+        lock(i);
+        CacheLine * cline = nullptr;
+        cline = GetCLine(i);
+
+        GAddr gs = i > start ? i : start;
+        epicAssert(GMINUS(nextb, gs) > 0);
+        void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
+        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+        if (wr->op == READ) memcpy(ls, cs, len);
+        else if (wr->op == WRITE) memcpy(cs, ls, len);
+
+        unlock(i);
+        i = nextb;
+        continue;
+      }
+
+      else { // local_node != owner_node，需要转发，把local_request那里的复制过来基本就行
+        //worker->Just_for_test("forward_read/write to Owner_node", wr);
+        WorkRequest* lwr = new WorkRequest(*wr);
+        lwr->counter = 0;
+        Client* Owner_cli = worker->GetClient(Cur_owner);
+        
+        lwr->op = JUST_READ;
+        lwr->addr = i;
+        lwr->size = BLOCK_SIZE;
+
+        if (wr->flag & ASYNC) {
+          if (!wr->IsACopy()) {
+            wr->unlock();
+            wr = wr->Copy();
+            wr->lock();
+          }
+        } 
+
+        wr->is_cache_hit_ = false;
+
+        lwr->parent = wr;
+        wr->counter++;
+
+        if (wr->op == WRITE) {
+          
+          GAddr gs = i > start ? i : start;
+          char buf[BLOCK_SIZE];
+          
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          memcpy(buf, ls, len);
+
+          lwr->op = JUST_WRITE;
+          lwr->addr = gs;
+          lwr->ptr = buf;
+          lwr->size = len;
+
+          worker->SubmitRequest(Owner_cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+          //forget to delete wr
+        }
+
+        else {
+          lock(i);
+          CacheLine * cline = nullptr;
+          cline = SetCLine(i);
+          unlock(i);
+          lwr->ptr = cline->line;
+
+          worker->SubmitRequest(Owner_cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+        }
+        
+        i = nextb;
+        continue;
+      }
+    }
+
+    else if (Cur_Dstate == DataState::READ_MOSTLY) {
+      if (wr->op == READ) {// read
+        //worker->Just_for_test("Rm_read_cache", wr);
+        lock(i);
+        CacheLine* cline = nullptr;
+        cline = GetCLine(i);
+        if (cline == nullptr) { //first time read,需要去home_node要数据，并更新shared_list
+          cline = SetCLine(i);
+          cline->state = CACHE_TO_SHARED; // 等拿到数据再转
+          WorkRequest* lwr = new WorkRequest(*wr);
+          lwr->counter = 0;
+          lwr->ptr = cline->line;
+          lwr->addr = i;
+          lwr->size = BLOCK_SIZE;
+          lwr->counter = 0;
+          lwr->parent = wr;
+          lwr->op = RM_READ;
+          wr->counter ++;
+
+          worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+          unlock(i);
+          i = nextb;
+          continue;
+        }
+        else { //已经有数据，直接读取就行
+          CacheState state = cline->state;
+          if (unlikely(InTransitionState(state))) { //transition state
+            epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
+
+            wr->counter++;
+            wr->unlock();
+            if (wr->flag & ASYNC) {
+              if (!wr->IsACopy()) {
+                wr = wr->Copy();
+              }
+            }
+            worker->AddToServeLocalRequest(i, wr);
+            unlock(i);
+            return 1;
+          }
+
+          GAddr gs = i > start ? i : start;
+          epicAssert(GMINUS(nextb, gs) > 0);
+          void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          memcpy(ls, cs, len);
+          unlock(i);
+          i = nextb;
+          continue;
+        }
+      }
+      else { // op = WRITE
+        //worker->Just_for_test("Rm_write_cache", wr);
+        lock(i);
+        CacheLine* cline = nullptr;
+        cline = GetCLine(i);
+
+        if (cline != nullptr) {
+          CacheState state = cline->state;
+          if (unlikely(InTransitionState(state))) { //transition state
+            epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
+
+            wr->counter++;
+            wr->unlock();
+            if (wr->flag & ASYNC) {
+              if (!wr->IsACopy()) {
+                wr = wr->Copy();
+              }
+            }
+            worker->AddToServeLocalRequest(i, wr);
+            unlock(i);
+            return 1;
+          }
+        }
+
+        WorkRequest* lwr = new WorkRequest(*wr);
+
+        if (wr->flag & ASYNC) {
+          if (!wr->IsACopy()) {
+            wr->unlock();
+            wr = wr->Copy();
+            wr->lock();
+          }
+        }
+
+        if (cline == nullptr) { //第一次对该缓存块操作
+          lwr->flag |= Add_list;
+          cline = SetCLine(i);
+          cline->state = CACHE_TO_INVALID;
+        }
+        cline->state = CACHE_TO_INVALID; //TO_INVALID表示该节点作为发送写请求的节点
+
+        GAddr gs = i > start ? i : start;
+        char buf[BLOCK_SIZE];
+          
+        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+        memcpy(buf, ls, len);
+        
+        lwr->op = RM_WRITE;
+        lwr->addr = gs;
+        lwr->ptr = buf;
+        lwr->size = len;
+        lwr->next = (WorkRequest*)(cline->line);
+        lwr->parent = wr;
+        wr->counter ++;
+
+        worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+
+        unlock(i);
+        i = nextb;
+        continue;
+      }
+    }
+    //worker->Just_for_test("cache.cc", wr);
+    /* add ergeda add */
     lock(i);
     CacheLine* cline = nullptr;
 #ifdef SELECTIVE_CACHING
@@ -223,6 +473,7 @@ int Cache::ReadWrite(WorkRequest* wr) {
         epicAssert(false);
       }
     } else {
+      //worker->Just_for_test("cache invalid", wr);
       WorkRequest* lwr = new WorkRequest(*wr);
 #ifdef SELECTIVE_CACHING
       if(!cline) {
@@ -851,6 +1102,22 @@ void Cache::UndoShared(GAddr addr) {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
+/* add ergeda add */
+void Cache::DeleteCache(CacheLine * cline) {
+  void* line = cline->line;
+  worker->sb.sb_free((char*) line - CACHE_LINE_PREFIX);
+  used_bytes -= (BLOCK_SIZE + CACHE_LINE_PREFIX);
+
+  //epicAssert(!IsBlockLocked(cline)); //啥意思这句
+
+  if (!caches.erase(cline->addr)) {
+    epicLog(LOG_WARNING, "cannot invalidate the cache line");
+  }
+
+  delete cline;
+  cline = nullptr;
+}
+/* add ergeda add */
 
 void Cache::ToInvalid(CacheLine* cline) {
 #ifdef SELECTIVE_CACHING

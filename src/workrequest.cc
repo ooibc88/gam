@@ -35,6 +35,39 @@ int WorkRequest::Ser(char* buf, int& len) {
     case GET:
       len = appendInteger(buf, lop, id, wid, key);
       break;
+    /* add ergeda add */
+    case SET_CACHE:
+      len = appendInteger(buf, lop, id, wid, addr, size, flag, arg);
+      break;
+    case SET_CACHE_REPLY:
+      len = appendInteger(buf, lop, id, wid);
+      break;
+    case RM_READ:
+    case JUST_READ:
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr);
+      break;
+    case READ_TYPE:
+      len = appendInteger(buf, lop, id, wid, addr);
+      break;
+    case JUST_WRITE:
+    case TYPE_REPLY:
+      len = appendInteger(buf, lop, id, wid, addr, size, flag);
+      memcpy(buf + len, ptr, size);
+      len += size;
+      break;
+    case RM_WRITE:
+      len = appendInteger(buf, lop, id, wid, addr, size, flag, next);
+      memcpy(buf + len, ptr, size);
+      len += size;
+      break;
+    case RM_FORWARD:
+      len = appendInteger(buf, lop, id, wid, addr);
+      break;
+    case TEST_RDMA:
+      len = appendInteger(buf, lop, id, wid, addr, ptr);
+      break;
+
+    /* add ergeda add */
     case PUT:
     case GET_REPLY:
       len = appendInteger(buf, lop, id, wid, key, size);
@@ -46,7 +79,10 @@ int WorkRequest::Ser(char* buf, int& len) {
       break;
 
     case MALLOC:
-      len = appendInteger(buf, lop, id, wid, size, flag);
+      //len = appendInteger(buf, lop, id, wid, size, flag);
+      /* add ergeda add */
+      len = appendInteger(buf, lop, id, wid, size, flag, arg);
+      /* add ergeda add */
       break;
     case MALLOC_REPLY:
       len = appendInteger(buf, lop, id, wid, addr, status);
@@ -172,6 +208,39 @@ int WorkRequest::Deser(const char* buf, int& len) {
     case GET:
       p += readInteger(p, id, wid, key);
       break;
+    /* add ergeda add */
+    case SET_CACHE:
+      p += readInteger(p, id, wid, addr, size, flag, arg);
+      break;
+    case SET_CACHE_REPLY:
+      p += readInteger(p, id, wid);
+      break;
+    case RM_READ:
+    case JUST_READ:
+      p += readInteger(p, id, wid, addr, size, ptr);
+      break;
+    case READ_TYPE:
+      p += readInteger(p, id, wid, addr);
+      break;
+    case JUST_WRITE:
+    case TYPE_REPLY:
+      p += readInteger(p, id, wid, addr, size, flag);
+      ptr = const_cast<char*>(p);
+      len = size;
+      break;
+    case RM_WRITE:
+      p += readInteger(p, id, wid, addr, size, flag, next);
+      ptr = const_cast<char*>(p);
+      len = size;
+      break;
+    case RM_FORWARD:
+      p += readInteger(p, id, wid, addr);
+      break;
+    case TEST_RDMA:
+      p += readInteger (p, id, wid, addr, ptr);
+      break;
+
+    /* add ergeda add */
     case PUT:
     case GET_REPLY:
       p += readInteger(p, id, wid, key, size);
@@ -183,7 +252,10 @@ int WorkRequest::Deser(const char* buf, int& len) {
       break;
 
     case MALLOC:
-      p += readInteger(p, id, wid, size, flag);
+      //p += readInteger(p, id, wid, size, flag);
+      /* add ergeda add */
+      p += readInteger(p, id, wid, size, flag, arg);
+      /* add ergeda add */
       break;
     case MALLOC_REPLY:
       p += readInteger(p, id, wid, addr, status);

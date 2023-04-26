@@ -139,11 +139,15 @@ void Directory::ToUnShared(DirEntry*& entry) {
     entry->shared.clear();
     epicLog(LOG_DEBUG, "dir is locked, just change it to dir_unshared");
   } else {
-    if (!dir.erase(entry->addr)) {
-      epicLog(LOG_WARNING, "cannot unshared the directory entry");
+  /* add ergeda add */
+    if (entry->Dstate != MSI) {
+    /* add ergeda add */
+      if (!dir.erase(entry->addr)) {
+        epicLog(LOG_WARNING, "cannot unshared the directory entry");
+      }
+      delete entry;
+      entry = nullptr;
     }
-    delete entry;
-    entry = nullptr;
   }
 }
 
