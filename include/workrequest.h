@@ -58,6 +58,9 @@ enum Work {
   RM_FORWARD, //read_mostly forward_write
   RM_Done, //read_mostly forward_write_done
   TEST_RDMA, //used to learn rdma workflow
+  WE_READ, //write exclusive read
+  WE_WRITE, //write exclusive write(!owner_node)
+  WE_INV, //write_exclusive invalidate
   /* add ergeda add */
 #ifdef DHT
   GET_HTABLE,

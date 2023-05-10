@@ -132,7 +132,7 @@ void Worker::ProcessRemoteMalloc(Client* client, WorkRequest* wr) {
     /* add ergeda add */
     DataState Dstate = GetDataState(wr->flag);
 //    if (Dstate != MSI) {
-      GAddr Owner = ( (int)(wr->arg) << 48);
+      GAddr Owner = ( (1ll * (int)(wr->arg) ) << 48);
   //    if (Dstate != DataState::MSI) {
         CreateDir(wr, Dstate, Owner); //home_node需要建立directory
   //    }
@@ -496,6 +496,21 @@ void Worker::ProcessRequest(Client* client, WorkRequest* wr) {
     case TEST_RDMA:
       {
         TestRecv(client, wr);
+        break;
+      }
+    case WE_READ:
+      {
+        ProcessRemoteWeRead(client, wr);
+        break;
+      }
+    case WE_WRITE:
+      {
+        ProcessRemoteWeWrite(client, wr);
+        break;
+      }
+    case WE_INV:
+      {
+        ProcessRemoteWeInv(client, wr);
         break;
       }
     /*  add ergeda add */

@@ -120,18 +120,11 @@ void ProcessRead_Write (WorkerHandle * Cur_wh, GAddr addr, GAddr addr2, int * va
 
 atomic<int> Count;
 
-void Random_read(WorkerHandle * Cur_wh, GAddr addr, int * val) {
-  int x = 1;
-  Count += x;
-  while (x --) {
-    Read_val(Cur_wh, addr, val);
-  }
-}
-
 void PrivateRead(WorkerHandle * Cur_wh, GAddr addr, int * val, int num) {
   while (num --) {
-    int x = rand() % 2;
-    if (x == 0) Read_val(Cur_wh, addr, val);
+    int x = rand() % 4;
+    //if (x == 3) Read_val(Cur_wh, addr, val);
+    if (x != 0) Read_val(Cur_wh, addr, val);
     else {
       Write_val(Cur_wh, addr, val);
       Send_Fence(Cur_wh);
@@ -139,9 +132,20 @@ void PrivateRead(WorkerHandle * Cur_wh, GAddr addr, int * val, int num) {
   }
 }
 
+void Random_read(WorkerHandle * Cur_wh, GAddr addr, int * val, int num) {
+  while (num --) {
+    int x = rand() % 2;
+    if (x == 0) Read_val(Cur_wh, addr, val);
+    else {
+      Write_val(Cur_wh, addr, val);
+    }
+  }
+}
+
 void Test_Portion() { //随机的读写，读写比例，节点自定义
   Count = 0;
-  GAddr addr = Malloc_addr(wh[1], sizeof(int), 0, 1);
+  //GAddr addr = Malloc_addr(wh[1], sizeof(int), 0, 1);
+  GAddr addr = Malloc_addr(wh[2], BLOCK_SIZE, Access_exclusive, 3);  
   printf ("addr : %lld\n", addr);
   // Start iteration
   int Iteration = 100000;
@@ -152,7 +156,40 @@ void Test_Portion() { //随机的读写，读写比例，节点自定义
     std::list<std::thread*> threads;
     for (int i = 0; i < num_worker; ++i) {
        // 创建一个存储 std::thread 指针的容器
-      std::thread* thread_new = new std::thread(PrivateRead, wh[i], addr, &val, i == 0 ? 180 : 1);
+      std::thread* thread_new = new std::thread(PrivateRead, wh[i], addr, &val, i == 2 ? 50 : 10);
+      threads.push_back(thread_new);
+      
+      //Read_val (wh[i], addr, &val);
+      /*if (val != Lastval) {
+        printf ("node : %d, val : %d, Lastval : %d\n", i+1, val, Lastval);
+        flag = 1;
+      }*/
+    }
+    for (auto thread : threads) { thread->join(); } //阻塞主线程等待子线程执行完毕
+    for (auto thread : threads) { delete thread; }
+  }
+
+  printf ("read portion : %.5lf\n", 1.0 * 100000 / (1.0 * Count) );
+
+  long End = get_time();
+  printf ("End\n");
+  printf ("running time : %lld\n", End - Start);
+}
+
+void Test_random() { //随机的读写，读写比例，节点自定义
+  Count = 0;
+  GAddr addr = Malloc_addr(wh[1], BLOCK_SIZE, Write_exclusive, 3);  
+  printf ("addr : %lld\n", addr);
+  // Start iteration
+  int Iteration = 10000;
+  printf ("Start\n");
+  long Start = get_time();
+  for (int round = 0; round < Iteration; ++ round) {
+    int val = rand();
+    std::list<std::thread*> threads;
+    for (int i = 0; i < num_worker; ++i) {
+       // 创建一个存储 std::thread 指针的容器
+      std::thread* thread_new = new std::thread(Random_read, wh[i], addr, &val, 5);
       threads.push_back(thread_new);
       
       //Read_val (wh[i], addr, &val);
@@ -190,26 +227,45 @@ void Test_Communicate() {
   printf ("running time : %lld\n", End - Start);
 }
 
+void Test_singleblock() {
+  GAddr addr = Malloc_addr(wh[1], BLOCK_SIZE, Write_exclusive, 2); 
+  int val = rand();
+  Write_val(wh[0], addr, &val); 
+  printf ("write val : %d\n", val);
+  int Lastval = val;
+  Send_Fence(wh[0]);
+  bool flag = 0;
+  //std::list<std::thread*> threads;
+  sleep(1);
+  Read_val (wh[1], addr, &val);
+  printf ("read val : %d\n", val);
+}
+
 void Solve (){
   Create_master();
-  for (int i = 0; i < 15; ++i) {
+  for (int i = 0; i < 10; ++i) {
     Create_worker();
   }
 
-  sleep(1);
+  //sleep(1);
   //Test_Communicate();
-  //Test_Portion();
+  Test_Portion();
+  //Test_random();
   //return;
   //
-  GAddr addr = Malloc_addr(wh[1], BLOCK_SIZE, 0, 2); 
+  //Test_singleblock();
+  return;
+
+  GAddr addr = Malloc_addr(wh[1], BLOCK_SIZE, Write_exclusive, 3);  
   //GAddr addr2 = Malloc_addr(wh[1], BLOCK_SIZE, 0, 2);
   printf ("addr : %lld\n", addr);
   //printf ("addr2 : %lld\n", addr2);
   // Start iteration
-  int Iteration = 1000000;
-  printf ("Start\n");
-  long Start = get_time();
+  int Iteration = 100000;
+  printf ("Start\n"); 
+  long Start = get_time(); 
   for (int round = 0; round < Iteration; ++ round) {
+    //printf ("Got to Round %d\n", round);
     int x = rand() % num_worker;
     int val = rand();
     Write_val(wh[0], addr, &val); 

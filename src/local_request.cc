@@ -140,7 +140,7 @@ int Worker::ProcessLocalMalloc(WorkRequest* wr) {
     if (GetWorkerId() == WID(wr->addr)) { // Cur_node == home_node
       CreateDir(wr, Dstate, Owner); //home_node需要建立directory，只要选择多级一致性就需要在home_node建目录,unless msi
     }
-    if (Dstate == DataState::ACCESS_EXCLUSIVE) {
+    if (Dstate == DataState::ACCESS_EXCLUSIVE || Dstate == WRITE_EXCLUSIVE) {
       if (GetWorkerId() == WID(Owner) && GetWorkerId() != WID(wr->addr) ) {// cur_node = owner_node, cur_node != home_node, 需要在本地建cache
         CreateCache(wr, Dstate);
       }

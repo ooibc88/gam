@@ -99,6 +99,71 @@ int Worker::ProcessLocalRead(WorkRequest* wr) {
           i = nextb;
           continue;
         }
+
+        else if (Ds == WRITE_EXCLUSIVE) { //shared_list 什么的都转移到owner node去了，这里就是普通节点罢了
+          if (WID(Cur_owner) == GetWorkerId()) { //home_node = owner_node,直接读
+            GAddr gs = i > start ? i : start;
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+            memcpy(ls, ToLocal(gs), len); //直接复制就行
+          }
+          else { //否则以owner节点为home_node
+            cache.lock(i);
+            CacheLine* cline = nullptr;
+            if(cline = cache.GetCLine(i)) { //有缓存
+              CacheState state = cline->state;
+              if (unlikely(cache.InTransitionState(state))) { //transition state
+                epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
+
+                wr->counter++;
+                wr->unlock();
+                if (wr->flag & ASYNC) {
+                  if (!wr->IsACopy()) {
+                    wr = wr->Copy();
+                  }
+                }
+                AddToServeLocalRequest(i, wr);
+                cache.unlock(i);
+                return 1;
+              }
+              
+              GAddr gs = i > start ? i : start;
+              void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+              int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+              memcpy(ls, cline->line, len); //直接复制就行
+            }
+            else { //无缓存,需要去owner_node取数据
+              WorkRequest* lwr = new WorkRequest(*wr);
+              //newcline++;
+              cline = cache.SetCLine(i);
+              lwr->op = WE_READ;
+              lwr->counter = 0;
+              lwr->flag |= CACHED;
+              lwr->addr = i;
+              lwr->size = BLOCK_SIZE;
+              lwr->ptr = cline->line;
+              wr->is_cache_hit_ = false;
+              if (wr->flag & ASYNC) {
+                if (!wr->IsACopy()) {
+                  wr->unlock();
+                  wr = wr->Copy();
+                  wr->lock();
+                }
+              }
+              lwr->parent = wr;
+              wr->counter++;
+              if (READ == wr->op) {
+                cache.ToToShared(cline);
+              }
+              Client* cli = GetClient(Cur_owner);
+              SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+            }
+            cache.unlock(i);
+          }
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
       }
       /* add ergeda add */
 
@@ -291,7 +356,7 @@ int Worker::ProcessLocalWrite(WorkRequest* wr) {
           GAddr gs = i > start ? i : start;
           void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
           int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-          memcpy(ToLocal(gs), ls, len);
+          memcpy(ToLocal(gs), ls, len); //在这里就memcpy一定是对的吗？
 
           list<GAddr>& shared = directory.GetSList(entry);
           if (shared.size()) {
@@ -329,6 +394,62 @@ int Worker::ProcessLocalWrite(WorkRequest* wr) {
           }
           else {
             entry->state = DIR_SHARED;
+          }
+
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+
+        else if (Ds == WRITE_EXCLUSIVE) {
+          if (WID(Cur_owner) == GetWorkerId()) { //home_node = owner_node, 本地写
+
+            //entry->state = DIR_TO_SHARED; //等待副本都无效,这底下和read_mostly几乎一致，可以合并到同一个函数。。
+
+            GAddr gs = i > start ? i : start;
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+            memcpy(ToLocal(gs), ls, len);// 在这里就memcpy一定是对的吗？异步情况下，似乎不对。
+
+            if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
+              if (!wr->IsACopy()) {
+                wr->unlock();
+                wr = wr->Copy();
+                wr->lock();
+              }
+            }
+
+            Code_invalidate(wr, entry, i);
+          }
+
+          else { // home_node != owner_node
+            WorkRequest* lwr = new WorkRequest(*wr);
+            lwr->counter = 0;
+            Client* cli = GetClient(Cur_owner);
+            GAddr gs = i > start ? i : start;
+            char buf[BLOCK_SIZE];
+            
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start)); //要写入的数据，该缓存块对应的数据
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs); // 长度
+            memcpy(buf, ls, len); 
+
+            lwr->op = WE_WRITE;//基本同JUST_WRITE;
+            lwr->addr = gs;
+            lwr->ptr = buf;
+            lwr->size = len;
+
+            if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
+              if (!wr->IsACopy()) {
+                wr->unlock();
+                wr = wr->Copy();
+                wr->lock();
+              }
+            }
+
+            lwr->parent = wr;
+            lwr->counter = 0;
+            wr->counter ++; // 存在一个远程请求没搞定
+            SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
           }
 
           directory.unlock(laddr);
@@ -735,6 +856,39 @@ void Worker::CreateCache(WorkRequest * wr, DataState Dstate) {
     cline = cache.SetCLine(i);
     cache.unlock(i);
     i = nextb;
+  }
+}
+
+void Worker::Code_invalidate(WorkRequest * wr, DirEntry * entry, GAddr blk) { 
+  list<GAddr>& shared = directory.GetSList(entry);
+  if (shared.size()) {
+    entry->state = DIR_TO_SHARED;
+
+    WorkRequest* lwr = new WorkRequest(*wr);
+    lwr->lock();
+    lwr->counter = 0;
+
+    if (entry->Dstate == READ_MOSTLY) lwr->op = RM_FORWARD;
+    else if (entry->Dstate == WRITE_EXCLUSIVE) lwr->op = WE_INV;
+
+    lwr->addr = blk;
+    lwr->parent = wr;
+    
+    lwr->id = GetWorkPsn();
+
+    lwr->counter = shared.size();
+    wr->counter ++;
+
+    bool first = true;
+    for (auto it = shared.begin(); it != shared.end(); it++) {
+      Client* cli = GetClient(*it);
+      if (first) {
+        AddToPending(lwr->id, lwr);
+        first = false;
+      }
+      SubmitRequest(cli, lwr);
+    }
+    lwr->unlock();
   }
 }
 /* add ergeda add */

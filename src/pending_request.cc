@@ -700,6 +700,18 @@ void Worker::ProcessPendingRequest(Client* cli, WorkRequest* wr) {
       ProcessPendingRmDone (cli, wr);
       break;
     }
+    case WE_READ: {
+      ProcessPendingWeRead (cli, wr);
+      break;
+    }
+    case WE_WRITE: {
+      ProcessPendingWeWrite (cli, wr);
+      break;
+    }
+    case WE_INV: {
+      ProcessPendingWeInv (cli, wr);
+      break;
+    }
     /* add ergeda add */
     default:
       epicLog(LOG_WARNING, "unrecognized work request %d", wr->op);
@@ -928,5 +940,115 @@ void Worker::ProcessPendingRmDone(Client * client, WorkRequest * wr) {
   ProcessToServeRequest(wr);
   delete wr;
   wr = nullptr;
+}
+
+void Worker::ProcessPendingWeRead(Client * client, WorkRequest * wr) {
+  WorkRequest* parent = wr->parent;
+  parent->lock();
+
+  cache.lock(wr->addr);
+  GAddr pend = GADD(parent->addr, parent->size);
+  GAddr end = GADD(wr->addr, wr->size);
+  GAddr gs = wr->addr > parent->addr ? wr->addr : parent->addr;
+  void* ls = (void*) ((ptr_t) parent->ptr + GMINUS(gs, parent->addr));
+  void* cs = (void*) ((ptr_t) wr->ptr + GMINUS(gs, wr->addr));
+  Size len = end > pend ? GMINUS(pend, gs) : GMINUS(end, gs);
+  memcpy(ls, cs, len);
+
+  CacheLine * cline = cache.GetCLine(wr->addr);
+  cline->state = CACHE_SHARED;
+  cache.unlock(wr->addr);
+
+  if ( (--parent->counter) == 0) {  //read all the data
+    parent->status = SUCCESS;
+    parent->unlock();
+    Notify(parent);
+  } else {
+    parent->unlock();
+  }
+
+  int ret = ErasePendingWork(wr->id);
+  ProcessToServeRequest(wr);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingWeWrite(Client * client, WorkRequest * wr) {
+  //Just_for_test("Pending We_write", wr);
+  WorkRequest* parent = wr->parent;
+  parent->lock();
+
+  if ( (-- parent->counter) == 0) {
+    parent->status = SUCCESS;
+    parent->unlock();
+    Notify(parent);
+  }
+  else {
+    parent->unlock();
+  }
+  int ret = ErasePendingWork(wr->id);
+  ProcessToServeRequest(wr);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingWeInv(Client * client, WorkRequest * wr) { //和RMFORWARD那个太类似了，感觉可以合并到一个函数
+  //Just_for_test("pending We_Inv", wr);
+  WorkRequest * parent = wr->parent;
+  parent->lock();
+  wr->lock();
+
+  GAddr blk = TOBLOCK(wr->addr);
+  void * laddr;
+  if (IsLocal(blk)) laddr = ToLocal(blk);
+  else laddr = (void*)blk;
+
+  if ( (--wr->counter) == 0) {
+    if (parent->op == WE_WRITE) { //request_node != owner_node
+      
+      directory.lock(laddr);
+      DirEntry * entry = directory.GetEntry(laddr);
+      entry->state = DIR_SHARED; // 所有副本都invalid了，可以修改状态
+      entry->shared.clear(); //忘了我去
+      parent->unlock();
+      
+      Client * cli = GetClient( ( (1ll * (parent->wid)) << 48) );
+      cli->WriteWithImm(nullptr, nullptr, 0, parent->id);
+      directory.unlock(laddr);
+      int ret = ErasePendingWork(wr->id);
+      wr->unlock();
+      parent->unlock();
+      
+      ProcessToServeRequest(wr);
+      delete wr;
+      wr = nullptr;
+      return;
+    }
+    else { //request_node == home_node
+      directory.lock(laddr);
+      DirEntry * entry = directory.GetEntry(laddr);
+      entry->state = DIR_SHARED; // 所有副本都invalid了，可以修改状态
+      entry->shared.clear();
+      directory.unlock(laddr);
+
+      if ( (--parent->counter) == 0) {
+        parent->status = SUCCESS;
+        parent->unlock();
+        Notify(parent);
+      }else {
+        parent->unlock();
+      }
+
+      int ret = ErasePendingWork(wr->id);
+      wr->unlock();
+      ProcessToServeRequest(wr);
+      delete wr;
+      wr = nullptr;
+      return;
+    }
+  }
+
+  parent->unlock();
+  wr->unlock();
 }
 /* add ergeda add */

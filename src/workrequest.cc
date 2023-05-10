@@ -44,6 +44,7 @@ int WorkRequest::Ser(char* buf, int& len) {
       break;
     case RM_READ:
     case JUST_READ:
+    case WE_READ:
       len = appendInteger(buf, lop, id, wid, addr, size, ptr);
       break;
     case READ_TYPE:
@@ -51,6 +52,7 @@ int WorkRequest::Ser(char* buf, int& len) {
       break;
     case JUST_WRITE:
     case TYPE_REPLY:
+    case WE_WRITE:
       len = appendInteger(buf, lop, id, wid, addr, size, flag);
       memcpy(buf + len, ptr, size);
       len += size;
@@ -61,6 +63,7 @@ int WorkRequest::Ser(char* buf, int& len) {
       len += size;
       break;
     case RM_FORWARD:
+    case WE_INV:
       len = appendInteger(buf, lop, id, wid, addr);
       break;
     case TEST_RDMA:
@@ -217,6 +220,7 @@ int WorkRequest::Deser(const char* buf, int& len) {
       break;
     case RM_READ:
     case JUST_READ:
+    case WE_READ:
       p += readInteger(p, id, wid, addr, size, ptr);
       break;
     case READ_TYPE:
@@ -224,6 +228,7 @@ int WorkRequest::Deser(const char* buf, int& len) {
       break;
     case JUST_WRITE:
     case TYPE_REPLY:
+    case WE_WRITE:
       p += readInteger(p, id, wid, addr, size, flag);
       ptr = const_cast<char*>(p);
       len = size;
@@ -234,6 +239,7 @@ int WorkRequest::Deser(const char* buf, int& len) {
       len = size;
       break;
     case RM_FORWARD:
+    case WE_INV:
       p += readInteger(p, id, wid, addr);
       break;
     case TEST_RDMA:

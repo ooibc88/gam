@@ -280,6 +280,9 @@ class Worker : public Server {
   void ProcessPendingRmWrite(Client * client, WorkRequest * wr); //用来处理read_mostly写完成的消息(request_node)
   void ProcessPendingRmForward(Client * client, WorkRequest * wr); //用来处理read_mostly转发写确认完成的消息(home_node)
   void ProcessPendingRmDone(Client * client, WorkRequest * wr); //用来处理read_mostly写确认完成的消息(other_node)
+  void ProcessPendingWeRead(Client * client, WorkRequest * wr); //用来处理Write_exclusive读完成确认的消息
+  void ProcessPendingWeWrite(Client * client, WorkRequest * wr); //用来处理Write_exclusive写完成确认的消息
+  void ProcessPendingWeInv(Client * client, WorkRequest * wr); //用来处理Write_exclusive无效完成确认的消息
 
   void ProcessRemoteReadType (Client * client, WorkRequest * wr);
   void ProcessRemoteTypeReply(Client * client, WorkRequest * wr);
@@ -291,9 +294,15 @@ class Worker : public Server {
   void ProcessRemoteRmRead(Client* client, WorkRequest* wr); //read_mostly的read,加入shared_list并返回数据
   void ProcessRemoteRmWrite(Client* client, WorkRequest* wr); //从非home_node节点发给home_node的read_mostly类型的写操作
   void ProcessRemoteRmForward(Client * client, WorkRequest * wr); //从home_node节点发给所有拥有副本节点的read_mostly类型的转发写操作。
+  void ProcessRemoteWeRead(Client * client, WorkRequest * wr); //从非owner节点发送读请求给owner节点
+  void ProcessRemoteWeWrite(Client * client, WorkRequest * wr); //从非owner节点发送写请求给owner节点
+  void ProcessRemoteWeInv(Client * client, WorkRequest * wr); //从owner节点发给副本发送无效化指令
 
   void CreateDir (WorkRequest * wr, DataState Cur_state=DataState::MSI, GAddr Owner=0); //每次malloc在home_node上和owner_node都需要建立directory.
   void CreateCache (WorkRequest * wr, DataState Dstate=DataState::MSI); //每次状态转换，需要在owner_node上建立cache，除非home_node=owner_node
+//Code开头的函数都用于简化下代码，实在是太冗长了，还是得写成函数才好,代码放在local_request_cache.cc的最后吧
+  void Code_invalidate(WorkRequest * wr, DirEntry * entry, GAddr blk);
+  
 
   DataState GetDataState (int flag) {
     if (flag & Access_exclusive) return DataState::ACCESS_EXCLUSIVE;

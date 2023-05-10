@@ -1072,4 +1072,152 @@ void Worker::ProcessRemoteRmForward(Client * client, WorkRequest * wr){
   //Just_for_test("already write", wr);
 }
 
+void Worker::ProcessRemoteWeRead(Client * client, WorkRequest * wr) {
+  //Just_for_test("We_Read", wr);
+
+  GAddr blk = TOBLOCK(wr->addr);
+
+  void * laddr;
+  if (IsLocal(blk)) laddr = ToLocal(blk);
+  else laddr = (void*)blk;
+
+  directory.lock(laddr);
+  DirEntry* entry = directory.GetEntry(laddr);
+  if (directory.InTransitionState(entry)) {
+    //to_serve_requests[wr->addr].push(pair<Client*, WorkRequest*>(client, wr));
+    AddToServeRemoteRequest(wr->addr, client, wr);
+    epicLog(LOG_INFO, "directory in Transition State %d",
+        directory.GetState(entry));
+    directory.unlock(laddr);
+    return;
+  }
+
+  entry->shared.push_back(client->ToGlobal(wr->ptr));
+  
+  if (IsLocal(blk)) { //home_node = owner_node
+    client->WriteWithImm(wr->ptr, ToLocal(blk), wr->size, wr->id);
+  }
+
+  else {
+    cache.lock(blk);
+    CacheLine* cline = cache.GetCLine(blk);
+    if (!cline) { // 相当于owner节点单副本却没数据？？
+      epicLog(LOG_WARNING, "owner_node does not have data ?!?!");
+    }
+    else { //存在单副本缓存数据，直接转发回去
+      client->WriteWithImm(wr->ptr, cline->line, wr->size, wr->id);
+    }
+    cache.unlock(blk);
+  }
+  directory.unlock(laddr);
+
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteWeWrite(Client * client, WorkRequest * wr) {
+
+  //Just_for_test("We_Write", wr);
+
+  GAddr blk = TOBLOCK(wr->addr);
+  void * laddr;
+  if (IsLocal(blk)) laddr = ToLocal(blk);
+  else laddr = (void*)blk;
+
+  directory.lock(laddr);
+  DirEntry * entry = directory.GetEntry(laddr);
+  if (entry == nullptr) {
+    epicLog(LOG_WARNING, "WeWrite no entry!");
+  }
+
+  if (directory.InTransitionState(entry)) { //中间态不能传数据
+    AddToServeRemoteRequest(blk, client, wr);
+    epicLog(LOG_INFO, "directory in Transition State %d",
+        directory.GetState(entry));
+    directory.unlock(laddr);
+    return;
+  }
+
+  entry->state = DIR_TO_SHARED; //中间态，等待所有副本节点确认
+
+  if (IsLocal(wr->addr)) { // home_node = owner_node
+    memcpy(ToLocal(wr->addr), wr->ptr, wr->size); //应该放到都无效完了再来写入？
+  }
+  else { //home_node != owner_node 更改cache
+    cache.lock(blk);
+    CacheLine * cline = nullptr;
+    cline = cache.GetCLine(blk);
+    if (cline == nullptr) {
+      epicLog(LOG_WARNING, "owner_node do not have cache ??");
+    }
+    void * cur_addr = cline->line + GMINUS(wr->addr, blk);
+    memcpy (cur_addr, wr->ptr, wr->size);
+    cache.unlock(blk);
+  }
+
+  list<GAddr>& shared = directory.GetSList(entry);
+  WorkRequest* lwr = new WorkRequest(*wr);
+  lwr->lock();
+  lwr->counter = 0;
+  lwr->op = WE_INV;
+  lwr->addr = blk; //之前是传buf过来，这里要改的是cache，得字节对齐
+  lwr->parent = wr;
+  
+  lwr->id = GetWorkPsn();
+
+  lwr->counter = shared.size();
+
+  bool first = true;
+  for (auto it = shared.begin(); it != shared.end(); it++) {
+    Client* cli = GetClient(*it);
+    epicLog(LOG_DEBUG, "invalidate forward (%d) cache from worker %d",
+        lwr->op, cli->GetWorkerId());
+    if (first) {
+      AddToPending(lwr->id, lwr);
+      first = false;
+    }
+    SubmitRequest(cli, lwr);
+  }
+
+  if (lwr->counter) { //存在除了request_node之外的副本需要写。
+    lwr->unlock();
+    directory.unlock(laddr);
+    return;  //return and wait for reply
+  } else { //不用等了，直接可以通知写操作完成。 
+    lwr->unlock();
+    delete lwr;
+    lwr = nullptr;
+    entry->state = DIR_SHARED;
+    client->WriteWithImm(nullptr, nullptr, 0, wr->id);
+    directory.unlock(laddr);
+    delete wr;
+    wr = nullptr;
+  }
+}
+
+void Worker::ProcessRemoteWeInv(Client * client, WorkRequest * wr) {
+  //Just_for_test("We_Inv", wr);
+  cache.lock(wr->addr);
+  CacheLine * cline = nullptr;
+  cline = cache.GetCLine(wr->addr);
+  if (cline == nullptr) {
+    epicLog(LOG_WARNING, "WEINV, owner_node do not have cache ??");
+    //可能被evict掉了
+  }
+  else {
+    if (cache.InTransitionState(cline)) {
+      //deadlock
+    }
+    else {
+      cache.ToInvalid(cline);
+      client->WriteWithImm(nullptr, nullptr, 0, wr->id);
+    }
+  }
+
+  cache.unlock(wr->addr);
+
+  delete wr;
+  wr = nullptr;
+}
+
 /* add ergeda add */

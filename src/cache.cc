@@ -93,7 +93,7 @@ int Cache::ReadWrite(WorkRequest* wr) {
     DataState Cur_Dstate = worker->directory.GetDataState(Entry);
     GAddr Cur_owner = worker->directory.GetOwner(Entry);
     
-    worker->directory.unlock((void*)i);
+    if (Cur_Dstate != WRITE_EXCLUSIVE) worker->directory.unlock((void*)i);
     if (Cur_Dstate == DataState::ACCESS_EXCLUSIVE) {
       if (worker->GetWorkerId() == WID(Cur_owner)) { // local_node == owner_node，直接读/写
         lock(i);
@@ -279,6 +279,110 @@ int Cache::ReadWrite(WorkRequest* wr) {
 
         worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
 
+        unlock(i);
+        i = nextb;
+        continue;
+      }
+    }
+
+    else if (Cur_Dstate == DataState::WRITE_EXCLUSIVE) {
+      CacheLine * cline = nullptr;
+      if (worker->GetWorkerId() == WID(Cur_owner)) { // local_node == owner_node，直接读/写
+        lock(i);
+        
+        cline = GetCLine(i);
+
+        GAddr gs = i > start ? i : start;
+        epicAssert(GMINUS(nextb, gs) > 0);
+        void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
+        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+        if (wr->op == READ) memcpy(ls, cs, len);
+        else if (wr->op == WRITE) {
+          memcpy(cs, ls, len);
+          if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
+            if (!wr->IsACopy()) {
+              wr->unlock();
+              wr = wr->Copy();
+              wr->lock();
+            }
+          }
+          worker->Code_invalidate(wr, Entry, i);
+        }
+
+        worker->directory.unlock((void*)i);
+        unlock(i);
+        i = nextb;
+        continue;
+      }
+
+      else { //在别的节点上
+        worker->directory.unlock((void*)i);
+        lock(i);
+        WorkRequest* lwr = new WorkRequest(*wr);
+        lwr->counter = 0;
+        Client* Cur_cli = worker->GetClient(Cur_owner);
+        GAddr gs = i > start ? i : start;
+        char buf[BLOCK_SIZE];
+        if (wr->op == WRITE){
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start)); //要写入的数据，该缓存块对应的数据
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs); // 长度
+          memcpy(buf, ls, len);
+
+          lwr->op = WE_WRITE;//基本同JUST_WRITE;
+          lwr->addr = gs;
+          lwr->ptr = buf;
+          lwr->size = len;
+        }
+
+        else if (wr->op == READ) {
+          if(cline = GetCLine(i)) { //有缓存
+            CacheState state = cline->state;
+            if (unlikely(InTransitionState(state))) { //transition state
+              epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
+
+              wr->counter++;
+              wr->unlock();
+              if (wr->flag & ASYNC) {
+                if (!wr->IsACopy()) {
+                  wr = wr->Copy();
+                }
+              }
+              worker->AddToServeLocalRequest(i, wr);
+              unlock(i);
+              return 1;
+            }
+
+            void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+            memcpy(ls, cs, len);
+
+            unlock(i);
+            i = nextb;
+            continue;
+          }
+          else {
+            cline = SetCLine(i);
+          }
+          lwr->op = WE_READ;//基本同JUST_WRITE;
+          lwr->addr = i;
+          lwr->size = BLOCK_SIZE;
+          lwr->ptr = cline->line;
+        }
+
+        if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
+          if (!wr->IsACopy()) {
+            wr->unlock();
+            wr = wr->Copy();
+            wr->lock();
+          }
+        }
+
+        lwr->parent = wr;
+        lwr->counter = 0;
+        wr->counter ++; // 存在一个远程请求没搞定
+        worker->SubmitRequest(Cur_cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
         unlock(i);
         i = nextb;
         continue;
