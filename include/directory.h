@@ -31,7 +31,7 @@ struct DirEntry
   GAddr owner;
   /* add ergeda add */
   /* add wpq add */
-  int ownerlist_subblock[NUM_SUBBLOCK] = {1, 1, 1};
+  int ownerlist_subblock[NUM_SUBBLOCK] = {1, 2, 3};
   int ownerNumber = 3;
   int linelist_subblock[NUM_SUBBLOCK] = {200, 300, 512};
   /* add wpq add */

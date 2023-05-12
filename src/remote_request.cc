@@ -644,16 +644,19 @@ void Worker::ProcessRemoteChangeSubLog(Client *client, WorkRequest *wr)
   epicLog(LOG_PQ, "wr->addr = %lx", wr->addr);
 
   void *laddr;
+  DirEntry *Entry;
   if (IsLocal(wr->addr))
-    laddr = ToLocal(wr->addr);
-  else
-    laddr = (void *)wr->addr;
-
-  DirEntry *Entry = directory.GetEntry(laddr);
-  if (Entry == nullptr)
   {
-    epicLog(LOG_PQ, "Entry == nullptr");
+    laddr = ToLocal(wr->addr);
+    Entry = directory.GetEntry(laddr);
   }
+  else
+  {
+    laddr = (void *)wr->addr;
+    Entry = directory.GetEntry(laddr);
+  }
+
+  epicAssert(Entry != nullptr);
   Entry->ownerlist_subblock[wr->flagSub1] = wr->flagSub2;
 
   for (int i = 0; i < 2; i++)
@@ -661,4 +664,5 @@ void Worker::ProcessRemoteChangeSubLog(Client *client, WorkRequest *wr)
     epicLog(LOG_PQ, "Entry->ownerlist_subblock[%d] = %d", i, Entry->ownerlist_subblock[i]);
   }
 }
+
 /* add wpq add */

@@ -17,6 +17,7 @@ char local_init = 1;
 char remote_init = 2;
 int MAX_CASES = 100;
 int ng1 = 1000, ng2 = 2000, ng3 = 1000, ng4 = 1000;
+GAddr addr, addr1, addr2, addr3;
 
 void run_for_test()
 {
@@ -207,7 +208,7 @@ void Test_Portion()
 
 void Test_Communicate()
 {
-    GAddr addr = Malloc_addr(wh[1], BLOCK_SIZE, Access_exclusive, 2);
+    GAddr addr = Malloc_addr(wh[0], BLOCK_SIZE, Write_shared, 2);
     printf("addr : %ld\n", addr);
     // Start iteration
     int Iteration = 2;
@@ -216,7 +217,7 @@ void Test_Communicate()
     for (int round = 0; round < Iteration; ++round)
     {
         int val = rand();
-        Write_val(wh[1], addr, &val);
+        Write_val(wh[0], addr, &val);
     }
     // 144069640
     // 27849288
@@ -240,8 +241,8 @@ void Solve()
     // return;
 
     GAddr addr, addr1, addr2, addr3;
-    // addr = Malloc_addr(wh[0], BLOCK_SIZE, (int)(Write_shared), 2);
-    addr = Malloc_addr(wh[0], BLOCK_SIZE, (int)(Read_mostly), 1);
+    addr = Malloc_addr(wh[0], BLOCK_SIZE, (int)(Write_shared), 2);
+    // addr = Malloc_addr(wh[0], BLOCK_SIZE, (int)(Msi), 1);
     addr1 = addr + 100;
     addr2 = addr + 250;
     addr3 = addr + 350;
@@ -278,7 +279,6 @@ void Solve()
 
         threads.push_back(thread_new1);
         threads.push_back(thread_new2);
-        // threads.push_back(thread_new3);
         for (auto thread : threads)
         {
             thread->join();
@@ -297,7 +297,7 @@ void Solve()
             thread->join();
         }
 
-        // epicLog(LOG_PQ, "after:val1=%d, val2=%d, val3=%d\n", val1, val2, val3);
+        
 
         if (val1 != Lastval1 || val2 != Lastval2 || val3 != Lastval3)
         {
@@ -306,9 +306,6 @@ void Solve()
             printf("val2 : %d, Lastval2 : %d\n", val2, Lastval2);
             printf("val3 : %d, Lastval3 : %d\n", val3, Lastval3);
         }
-        // printf("val1 : %d, Lastval1 : %d\n", val1, Lastval1);
-        // printf("val2 : %d, Lastval2 : %d\n", val2, Lastval2);
-        // printf("val3 : %d, Lastval3 : %d\n", val3, Lastval3);
 
         for (auto thread : threads)
         {
@@ -321,14 +318,13 @@ void Solve()
     printf("running time : %ld\n", End - Start);
 }
 
+
 int main()
 {
-    // FILE * fp = fopen("log_test.txt", "w");
     srand(time(NULL));
     curlist = ibv_get_device_list(NULL);
-    // ibv_device **list = ibv_get_device_list(NULL);;
-    int i;
 
     Solve();
+
     return 0;
 }

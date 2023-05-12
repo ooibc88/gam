@@ -1,5 +1,4 @@
-// Copyright (c) 2018 The GAM Authors 
-
+// Copyright (c) 2018 The GAM Authors
 
 #include <cstring>
 #include "cache.h"
@@ -8,7 +7,8 @@
 #include "slabs.h"
 #include "kernel.h"
 
-int Cache::ReadWrite(WorkRequest* wr) {
+int Cache::ReadWrite(WorkRequest *wr)
+{
 #ifdef NOCACHE
   epicLog(LOG_WARNING, "shouldn't come here");
   return 0;
@@ -17,11 +17,12 @@ int Cache::ReadWrite(WorkRequest* wr) {
   int newcline = 0;
   GAddr start_blk = TOBLOCK(wr->addr);
   GAddr end = GADD(wr->addr, wr->size);
-  GAddr end_blk = TOBLOCK(end-1);
-  if (end_blk != start_blk) {
+  GAddr end_blk = TOBLOCK(end - 1);
+  if (end_blk != start_blk)
+  {
     epicLog(LOG_INFO, "read/write split to multiple blocks");
   }
-  Client* cli = worker->GetClient(wr->addr);
+  Client *cli = worker->GetClient(wr->addr);
   GAddr start = wr->addr;
 
   wr->lock();
@@ -29,31 +30,35 @@ int Cache::ReadWrite(WorkRequest* wr) {
    * we increase it by 1 before we push to the to_serve_local_request queue
    * so we have to decrease by 1 again
    */
-  if (wr->flag & TO_SERVE) {
+  if (wr->flag & TO_SERVE)
+  {
     wr->counter--;
   }
 
-
-  for (GAddr i = start_blk; i < end;) {
+  for (GAddr i = start_blk; i < end;)
+  {
     epicAssert(!(wr->flag & COPY) || ((wr->flag & COPY) && (wr->flag & ASYNC)));
 
     GAddr nextb = BADD(i, 1);
     /* add ergeda add */
-    worker->directory.lock((void*)i);
-    DirEntry * Entry = worker->directory.GetEntry((void*)i);
-    if (Entry == nullptr) { //no metadata in the first time;
-      //worker->Just_for_test("get Directory", wr);
-      worker->directory.CreateEntry((void*)i);
-      Entry = worker->directory.GetEntry((void*)i);
+    worker->directory.lock((void *)i);
+    DirEntry *Entry = worker->directory.GetEntry((void *)i);
+    if (Entry == nullptr)
+    { // no metadata in the first time;
+      // worker->Just_for_test("get Directory", wr);
+      worker->directory.CreateEntry((void *)i);
+      Entry = worker->directory.GetEntry((void *)i);
       worker->directory.ToToDirty(Entry, i);
-      WorkRequest* lwr = new WorkRequest(*wr);
+      WorkRequest *lwr = new WorkRequest(*wr);
 
       lwr->counter = 0;
       lwr->op = READ_TYPE;
       lwr->addr = i;
 
-      if (wr->flag & ASYNC) {
-        if (!wr->IsACopy()) {
+      if (wr->flag & ASYNC)
+      {
+        if (!wr->IsACopy())
+        {
           wr->unlock();
           wr = wr->Copy();
           wr->lock();
@@ -63,85 +68,98 @@ int Cache::ReadWrite(WorkRequest* wr) {
       wr->counter++;
       worker->AddToServeLocalRequest(i, wr);
       worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
-      worker->directory.unlock((void*)i);
+      worker->directory.unlock((void *)i);
       wr->unlock();
       return IN_TRANSITION;
     }
 
-    else { 
-      if (unlikely(worker->directory.InTransitionState(worker->directory.GetState(Entry)))) { // have not got datastate and owner
+    else
+    {
+      if (unlikely(worker->directory.InTransitionState(worker->directory.GetState(Entry))))
+      { // have not got datastate and owner
         epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
-        //we increase the counter in case
-        //we false call Notify()
+        // we increase the counter in case
+        // we false call Notify()
         wr->counter++;
         wr->unlock();
-        if (wr->flag & ASYNC) {
-          if (!wr->IsACopy()) {
-            //wr->unlock();
+        if (wr->flag & ASYNC)
+        {
+          if (!wr->IsACopy())
+          {
+            // wr->unlock();
             wr = wr->Copy();
-            //wr->lock();
+            // wr->lock();
           }
         }
-        //worker->to_serve_local_requests[i].push(wr);
+        // worker->to_serve_local_requests[i].push(wr);
         worker->AddToServeLocalRequest(i, wr);
-        worker->directory.unlock((void*)i);
-        //wr->unlock();
+        worker->directory.unlock((void *)i);
+        // wr->unlock();
         return 1;
       }
     }
 
     DataState Cur_Dstate = worker->directory.GetDataState(Entry);
     GAddr Cur_owner = worker->directory.GetOwner(Entry);
-    
-    if (Cur_Dstate != WRITE_EXCLUSIVE) worker->directory.unlock((void*)i);
-    if (Cur_Dstate == DataState::ACCESS_EXCLUSIVE) {
-      if (worker->GetWorkerId() == WID(Cur_owner)) { // local_node == owner_node，直接读/写
+
+    if (Cur_Dstate != WRITE_EXCLUSIVE)
+      worker->directory.unlock((void *)i);
+    if (Cur_Dstate == DataState::ACCESS_EXCLUSIVE)
+    {
+      if (worker->GetWorkerId() == WID(Cur_owner))
+      { // local_node == owner_node，直接读/写
         lock(i);
-        CacheLine * cline = nullptr;
+        CacheLine *cline = nullptr;
         cline = GetCLine(i);
 
         GAddr gs = i > start ? i : start;
         epicAssert(GMINUS(nextb, gs) > 0);
-        void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+        void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
         int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-        if (wr->op == READ) memcpy(ls, cs, len);
-        else if (wr->op == WRITE) memcpy(cs, ls, len);
+        if (wr->op == READ)
+          memcpy(ls, cs, len);
+        else if (wr->op == WRITE)
+          memcpy(cs, ls, len);
 
         unlock(i);
         i = nextb;
         continue;
       }
 
-      else { // local_node != owner_node，需要转发，把local_request那里的复制过来基本就行
-        //worker->Just_for_test("forward_read/write to Owner_node", wr);
-        WorkRequest* lwr = new WorkRequest(*wr);
+      else
+      { // local_node != owner_node，需要转发，把local_request那里的复制过来基本就行
+        // worker->Just_for_test("forward_read/write to Owner_node", wr);
+        WorkRequest *lwr = new WorkRequest(*wr);
         lwr->counter = 0;
-        Client* Owner_cli = worker->GetClient(Cur_owner);
-        
+        Client *Owner_cli = worker->GetClient(Cur_owner);
+
         lwr->op = JUST_READ;
         lwr->addr = i;
         lwr->size = BLOCK_SIZE;
 
-        if (wr->flag & ASYNC) {
-          if (!wr->IsACopy()) {
+        if (wr->flag & ASYNC)
+        {
+          if (!wr->IsACopy())
+          {
             wr->unlock();
             wr = wr->Copy();
             wr->lock();
           }
-        } 
+        }
 
         wr->is_cache_hit_ = false;
 
         lwr->parent = wr;
         wr->counter++;
 
-        if (wr->op == WRITE) {
-          
+        if (wr->op == WRITE)
+        {
+
           GAddr gs = i > start ? i : start;
           char buf[BLOCK_SIZE];
-          
-          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
           int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
           memcpy(buf, ls, len);
 
@@ -151,34 +169,38 @@ int Cache::ReadWrite(WorkRequest* wr) {
           lwr->size = len;
 
           worker->SubmitRequest(Owner_cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
-          //forget to delete wr
+          // forget to delete wr
         }
 
-        else {
+        else
+        {
           lock(i);
-          CacheLine * cline = nullptr;
+          CacheLine *cline = nullptr;
           cline = SetCLine(i);
           unlock(i);
           lwr->ptr = cline->line;
 
           worker->SubmitRequest(Owner_cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
         }
-        
+
         i = nextb;
         continue;
       }
     }
 
-    else if (Cur_Dstate == DataState::READ_MOSTLY) {
-      if (wr->op == READ) {// read
-        //worker->Just_for_test("Rm_read_cache", wr);
+    else if (Cur_Dstate == DataState::READ_MOSTLY)
+    {
+      if (wr->op == READ)
+      { // read
+        // worker->Just_for_test("Rm_read_cache", wr);
         lock(i);
-        CacheLine* cline = nullptr;
+        CacheLine *cline = nullptr;
         cline = GetCLine(i);
-        if (cline == nullptr) { //first time read,需要去home_node要数据，并更新shared_list
+        if (cline == nullptr)
+        { // first time read,需要去home_node要数据，并更新shared_list
           cline = SetCLine(i);
           cline->state = CACHE_TO_SHARED; // 等拿到数据再转
-          WorkRequest* lwr = new WorkRequest(*wr);
+          WorkRequest *lwr = new WorkRequest(*wr);
           lwr->counter = 0;
           lwr->ptr = cline->line;
           lwr->addr = i;
@@ -186,22 +208,26 @@ int Cache::ReadWrite(WorkRequest* wr) {
           lwr->counter = 0;
           lwr->parent = wr;
           lwr->op = RM_READ;
-          wr->counter ++;
+          wr->counter++;
 
           worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
           unlock(i);
           i = nextb;
           continue;
         }
-        else { //已经有数据，直接读取就行
+        else
+        { // 已经有数据，直接读取就行
           CacheState state = cline->state;
-          if (unlikely(InTransitionState(state))) { //transition state
+          if (unlikely(InTransitionState(state)))
+          { // transition state
             epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
 
             wr->counter++;
             wr->unlock();
-            if (wr->flag & ASYNC) {
-              if (!wr->IsACopy()) {
+            if (wr->flag & ASYNC)
+            {
+              if (!wr->IsACopy())
+              {
                 wr = wr->Copy();
               }
             }
@@ -212,8 +238,8 @@ int Cache::ReadWrite(WorkRequest* wr) {
 
           GAddr gs = i > start ? i : start;
           epicAssert(GMINUS(nextb, gs) > 0);
-          void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
           int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
           memcpy(ls, cs, len);
           unlock(i);
@@ -221,21 +247,26 @@ int Cache::ReadWrite(WorkRequest* wr) {
           continue;
         }
       }
-      else { // op = WRITE
-        //worker->Just_for_test("Rm_write_cache", wr);
+      else
+      { // op = WRITE
+        // worker->Just_for_test("Rm_write_cache", wr);
         lock(i);
-        CacheLine* cline = nullptr;
+        CacheLine *cline = nullptr;
         cline = GetCLine(i);
 
-        if (cline != nullptr) {
+        if (cline != nullptr)
+        {
           CacheState state = cline->state;
-          if (unlikely(InTransitionState(state))) { //transition state
+          if (unlikely(InTransitionState(state)))
+          { // transition state
             epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
 
             wr->counter++;
             wr->unlock();
-            if (wr->flag & ASYNC) {
-              if (!wr->IsACopy()) {
+            if (wr->flag & ASYNC)
+            {
+              if (!wr->IsACopy())
+              {
                 wr = wr->Copy();
               }
             }
@@ -245,37 +276,40 @@ int Cache::ReadWrite(WorkRequest* wr) {
           }
         }
 
-        WorkRequest* lwr = new WorkRequest(*wr);
+        WorkRequest *lwr = new WorkRequest(*wr);
 
-        if (wr->flag & ASYNC) {
-          if (!wr->IsACopy()) {
+        if (wr->flag & ASYNC)
+        {
+          if (!wr->IsACopy())
+          {
             wr->unlock();
             wr = wr->Copy();
             wr->lock();
           }
         }
 
-        if (cline == nullptr) { //第一次对该缓存块操作
+        if (cline == nullptr)
+        { // 第一次对该缓存块操作
           lwr->flag |= Add_list;
           cline = SetCLine(i);
           cline->state = CACHE_TO_INVALID;
         }
-        cline->state = CACHE_TO_INVALID; //TO_INVALID表示该节点作为发送写请求的节点
+        cline->state = CACHE_TO_INVALID; // TO_INVALID表示该节点作为发送写请求的节点
 
         GAddr gs = i > start ? i : start;
         char buf[BLOCK_SIZE];
-          
-        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+
+        void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
         int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
         memcpy(buf, ls, len);
-        
+
         lwr->op = RM_WRITE;
         lwr->addr = gs;
         lwr->ptr = buf;
         lwr->size = len;
-        lwr->next = (WorkRequest*)(cline->line);
+        lwr->next = (WorkRequest *)(cline->line);
         lwr->parent = wr;
-        wr->counter ++;
+        wr->counter++;
 
         worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
 
@@ -285,23 +319,29 @@ int Cache::ReadWrite(WorkRequest* wr) {
       }
     }
 
-    else if (Cur_Dstate == DataState::WRITE_EXCLUSIVE) {
-      CacheLine * cline = nullptr;
-      if (worker->GetWorkerId() == WID(Cur_owner)) { // local_node == owner_node，直接读/写
+    else if (Cur_Dstate == DataState::WRITE_EXCLUSIVE)
+    {
+      CacheLine *cline = nullptr;
+      if (worker->GetWorkerId() == WID(Cur_owner))
+      { // local_node == owner_node，直接读/写
         lock(i);
-        
+
         cline = GetCLine(i);
 
         GAddr gs = i > start ? i : start;
         epicAssert(GMINUS(nextb, gs) > 0);
-        void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+        void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
         int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-        if (wr->op == READ) memcpy(ls, cs, len);
-        else if (wr->op == WRITE) {
+        if (wr->op == READ)
+          memcpy(ls, cs, len);
+        else if (wr->op == WRITE)
+        {
           memcpy(cs, ls, len);
-          if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
-            if (!wr->IsACopy()) {
+          if (wr->flag & ASYNC)
+          { // 防止异步造成栈上的wr丢失
+            if (!wr->IsACopy())
+            {
               wr->unlock();
               wr = wr->Copy();
               wr->lock();
@@ -310,41 +350,48 @@ int Cache::ReadWrite(WorkRequest* wr) {
           worker->Code_invalidate(wr, Entry, i);
         }
 
-        worker->directory.unlock((void*)i);
+        worker->directory.unlock((void *)i);
         unlock(i);
         i = nextb;
         continue;
       }
 
-      else { //在别的节点上
-        worker->directory.unlock((void*)i);
+      else
+      { // 在别的节点上
+        worker->directory.unlock((void *)i);
         lock(i);
-        WorkRequest* lwr = new WorkRequest(*wr);
+        WorkRequest *lwr = new WorkRequest(*wr);
         lwr->counter = 0;
-        Client* Cur_cli = worker->GetClient(Cur_owner);
+        Client *Cur_cli = worker->GetClient(Cur_owner);
         GAddr gs = i > start ? i : start;
         char buf[BLOCK_SIZE];
-        if (wr->op == WRITE){
-          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start)); //要写入的数据，该缓存块对应的数据
+        if (wr->op == WRITE)
+        {
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));     // 要写入的数据，该缓存块对应的数据
           int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs); // 长度
           memcpy(buf, ls, len);
 
-          lwr->op = WE_WRITE;//基本同JUST_WRITE;
+          lwr->op = WE_WRITE; // 基本同JUST_WRITE;
           lwr->addr = gs;
           lwr->ptr = buf;
           lwr->size = len;
         }
 
-        else if (wr->op == READ) {
-          if(cline = GetCLine(i)) { //有缓存
+        else if (wr->op == READ)
+        {
+          if (cline = GetCLine(i))
+          { // 有缓存
             CacheState state = cline->state;
-            if (unlikely(InTransitionState(state))) { //transition state
+            if (unlikely(InTransitionState(state)))
+            { // transition state
               epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
 
               wr->counter++;
               wr->unlock();
-              if (wr->flag & ASYNC) {
-                if (!wr->IsACopy()) {
+              if (wr->flag & ASYNC)
+              {
+                if (!wr->IsACopy())
+                {
                   wr = wr->Copy();
                 }
               }
@@ -353,8 +400,8 @@ int Cache::ReadWrite(WorkRequest* wr) {
               return 1;
             }
 
-            void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
             int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
             memcpy(ls, cs, len);
 
@@ -362,17 +409,20 @@ int Cache::ReadWrite(WorkRequest* wr) {
             i = nextb;
             continue;
           }
-          else {
+          else
+          {
             cline = SetCLine(i);
           }
-          lwr->op = WE_READ;//基本同JUST_WRITE;
+          lwr->op = WE_READ; // 基本同JUST_WRITE;
           lwr->addr = i;
           lwr->size = BLOCK_SIZE;
           lwr->ptr = cline->line;
         }
 
-        if (wr->flag & ASYNC) { //防止异步造成栈上的wr丢失
-          if (!wr->IsACopy()) {
+        if (wr->flag & ASYNC)
+        { // 防止异步造成栈上的wr丢失
+          if (!wr->IsACopy())
+          {
             wr->unlock();
             wr = wr->Copy();
             wr->lock();
@@ -381,33 +431,187 @@ int Cache::ReadWrite(WorkRequest* wr) {
 
         lwr->parent = wr;
         lwr->counter = 0;
-        wr->counter ++; // 存在一个远程请求没搞定
+        wr->counter++; // 存在一个远程请求没搞定
         worker->SubmitRequest(Cur_cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
         unlock(i);
         i = nextb;
         continue;
       }
     }
-    //worker->Just_for_test("cache.cc", wr);
+    // worker->Just_for_test("cache.cc", wr);
     /* add ergeda add */
+    else if (Cur_Dstate == DataState::WRITE_SHARED)
+    {
+      /* add wpq add*/
+      worker->directory.lock((void *)i);
+      int subblock_num = worker->directory.GetSubBlockNum(Entry, wr->addr);
+
+      int subblock_owner = worker->directory.GetSubBlockOwner(Entry, subblock_num);
+      GAddr subblock_addr = worker->directory.GetSubBlockAddr(Entry, subblock_owner);
+
+      /* add wpq add */
+      int offset = wr->addr - TOBLOCK(wr->addr);
+      epicLog(LOG_PQ,
+              "Cur_Dstate = %d, offset = %d,subblock_num = %d, subblock_owner = %d",
+              Cur_Dstate, offset, subblock_num, subblock_owner);
+
+      worker->directory.unlock((void *)i);
+      if (subblock_owner == worker->GetWorkerId())
+      {
+        epicLog(LOG_PQ, "subblock_owner == worker->GetWorkerId()");
+        lock(i);
+        CacheLine *cline = nullptr;
+        if (cline = GetCLine(i))
+        {
+          epicLog(LOG_PQ, "GetCLine SUCCESS");
+        }
+        else
+        {
+          cline = SetCLine(i);
+        }
+
+        GAddr gs = i > start ? i : start;
+        epicAssert(GMINUS(nextb, gs) > 0);
+        void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+        void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
+        int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+        if (wr->op == READ)
+          memcpy(ls, cs, len);
+        else if (wr->op == WRITE)
+          memcpy(cs, ls, len);
+
+        epicLog(LOG_PQ, "cs= %lx, ls = %lx",
+                cs, ls);
+
+        unlock(i);
+        i = nextb;
+        continue;
+      }
+      else
+      {
+        epicLog(LOG_PQ, "subblock_owner != GetWorkerId()");
+        WorkRequest *lwr = new WorkRequest(*wr);
+        lwr->counter = 0;
+        /* add wpq add */
+        /* different from access exclusive*/
+        Client *sub_owner_client = worker->GetClient(subblock_addr);
+
+        lwr->op = JUST_READ;
+        lwr->addr = i;
+        lwr->size = BLOCK_SIZE;
+
+        if (wr->flag & ASYNC)
+        {
+          if (!wr->IsACopy())
+          {
+            wr->unlock();
+            wr = wr->Copy();
+            wr->lock();
+          }
+        }
+
+        wr->is_cache_hit_ = false;
+
+        lwr->parent = wr;
+        wr->counter++;
+        if (wr->op == WRITE)
+        {
+          DirEntry *Entry = worker->directory.GetEntry((void *)i);
+          Entry->ownerlist_subblock[subblock_num] = worker->GetWorkerId();
+          int ownerNumber = Entry->ownerNumber;
+          epicLog(LOG_PQ, "ownerNumber = %d", ownerNumber);
+
+          lock(i);
+          CacheLine *cline = nullptr;
+          if (cline = GetCLine(i))
+          {
+            epicLog(LOG_PQ, "GetCLine SUCCESS");
+          }
+          else
+          {
+            cline = SetCLine(i);
+          }
+          epicLog(LOG_PQ, "i = %lx, start = %lx, end = %lx",
+                  i, start, end);
+
+          GAddr gs = i > start ? i : start;
+          epicAssert(GMINUS(nextb, gs) > 0);
+          epicLog(LOG_PQ, "GMINUS(gs, i)= %lx",
+                  GMINUS(gs, i));
+          if (cline == nullptr)
+          {
+            epicLog(LOG_PQ, "cline == nullptr");
+          }
+          epicLog(LOG_PQ, "cline->line = %lx",
+                  cline->line);
+          void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+          epicLog(LOG_PQ, "GMINUS(gs, start)= %lx",
+                  GMINUS(gs, start));
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          epicLog(LOG_PQ, "len = %d", len);
+          epicLog(LOG_PQ, "cs= %lx, ls = %lx",
+                  cs, ls);
+          memcpy(cs, ls, len);
+
+          unlock(i);
+
+          lwr->op = ChangeSubLog;
+          lwr->flagSub1 = subblock_num;
+          lwr->flagSub2 = worker->GetWorkerId();
+          int temp1 = 0;
+          for (temp1 = 1; temp1 <= ownerNumber; temp1++)
+          {
+            if (temp1 == worker->GetWorkerId())
+              continue;
+            GAddr client_addr =
+                worker->directory.GetSubBlockAddr(Entry, temp1);
+            Client *client = worker->GetClient(client_addr);
+            worker->SubmitRequest(client, lwr,
+                                  ADD_TO_PENDING | REQUEST_SEND);
+          }
+
+          i = nextb;
+          continue;
+        }
+
+        else
+        {
+          lock(i);
+          CacheLine *cline = nullptr;
+          cline = SetCLine(i);
+          unlock(i);
+          lwr->ptr = cline->line;
+
+          worker->SubmitRequest(sub_owner_client, lwr, ADD_TO_PENDING | REQUEST_SEND);
+        }
+
+        /* add wpq add */
+        i = nextb;
+        continue;
+      }
+    }
     lock(i);
-    CacheLine* cline = nullptr;
+    CacheLine *cline = nullptr;
 #ifdef SELECTIVE_CACHING
-    if((cline = GetCLine(i)) && cline->state != CACHE_NOT_CACHE) {
+    if ((cline = GetCLine(i)) && cline->state != CACHE_NOT_CACHE)
+    {
 #else
-    if ((cline = GetCLine(i))) {
+    if ((cline = GetCLine(i)))
+    {
 #endif
       CacheState state = cline->state;
-      //FIXME: may violate the ordering guarantee of single thread
-      //special processing when cache is in process of eviction
-      //for WRITE, cannot allow since it may dirty the cacheline before
-      //it finished transmission
-      if (state == CACHE_TO_INVALID && READ == wr->op) {
+      // FIXME: may violate the ordering guarantee of single thread
+      // special processing when cache is in process of eviction
+      // for WRITE, cannot allow since it may dirty the cacheline before
+      // it finished transmission
+      if (state == CACHE_TO_INVALID && READ == wr->op)
+      {
         epicLog(LOG_INFO, "cache is going to be invalid, but still usable for read op = %d", wr->op);
         GAddr gs = i > start ? i : start;
         epicAssert(GMINUS(nextb, gs) > 0);
-        void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+        void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
         int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
         memcpy(ls, cs, len);
         unlock(i);
@@ -415,17 +619,18 @@ int Cache::ReadWrite(WorkRequest* wr) {
         continue;
       }
 
-      //special processing when cache is in process of to_to_dirty
-      //for WRITE, cannot allow since it may dirty the cacheline before
-      //it finished transmission
-      if (state == CACHE_TO_DIRTY && READ == wr->op && IsBlockLocked(cline)) {
+      // special processing when cache is in process of to_to_dirty
+      // for WRITE, cannot allow since it may dirty the cacheline before
+      // it finished transmission
+      if (state == CACHE_TO_DIRTY && READ == wr->op && IsBlockLocked(cline))
+      {
         epicAssert(!IsBlockWLocked(cline));
         epicLog(
             LOG_INFO, "cache is going from shared to dirty, but still usable for read op = %d", wr->op);
         GAddr gs = i > start ? i : start;
         epicAssert(GMINUS(nextb, gs) > 0);
-        void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-        void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+        void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+        void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
         int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
         memcpy(ls, cs, len);
         unlock(i);
@@ -433,36 +638,40 @@ int Cache::ReadWrite(WorkRequest* wr) {
         continue;
       }
 
-      if (unlikely(InTransitionState(state))) {
+      if (unlikely(InTransitionState(state)))
+      {
         epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
-        //we increase the counter in case
-        //we false call Notify()
+        // we increase the counter in case
+        // we false call Notify()
         wr->counter++;
         wr->unlock();
-        if (wr->flag & ASYNC) {
-          if (!wr->IsACopy()) {
-            //wr->unlock();
+        if (wr->flag & ASYNC)
+        {
+          if (!wr->IsACopy())
+          {
+            // wr->unlock();
             wr = wr->Copy();
-            //wr->lock();
+            // wr->lock();
           }
         }
-        //worker->to_serve_local_requests[i].push(wr);
+        // worker->to_serve_local_requests[i].push(wr);
         worker->AddToServeLocalRequest(i, wr);
         unlock(i);
-        //wr->unlock();
+        // wr->unlock();
         return 1;
       }
       epicAssert(state == CACHE_SHARED || state == CACHE_DIRTY);
 
       GAddr gs = i > start ? i : start;
       epicAssert(GMINUS(nextb, gs) > 0);
-      void* cs = (void*) ((ptr_t) cline->line + GMINUS(gs, i));
-      void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+      void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+      void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
       int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-      //this line is either shared in shared-only or dirty mode
-      //we can copy the data immediately since it will not be over-written by remote node
-      //and also allow following read ops get the latest data
-      if (READ == wr->op) {
+      // this line is either shared in shared-only or dirty mode
+      // we can copy the data immediately since it will not be over-written by remote node
+      // and also allow following read ops get the latest data
+      if (READ == wr->op)
+      {
 #ifdef SELECTIVE_CACHING
         cline->nread++;
         nread++;
@@ -472,49 +681,54 @@ int Cache::ReadWrite(WorkRequest* wr) {
         UnLinkLRU(cline);
         LinkLRU(cline);
 #endif
-      } else if (WRITE == wr->op) {
+      }
+      else if (WRITE == wr->op)
+      {
 #ifdef SELECTIVE_CACHING
         cline->nwrite++;
         nwrite++;
 #endif
-        if (state != CACHE_DIRTY) {
+        if (state != CACHE_DIRTY)
+        {
           epicAssert(state == CACHE_SHARED);
-//        we comment below deadlock handle since we add it the worker deadlock case 3
-//					/*
-//					 * below is used to avoid deadlock
-//					 * when we are in transition state (want to get ownership) and read locked,
-//					 * home node wants to invalidate it (home becomes in transition state).
-//					 * both will block and the deadlock solution in worker.cc:1775 is not enough,
-//					 * because read lock will block it forever
-//					 * if the thread holding the lock wants to read the data (will be blocked
-//					 * since it is in transition state)
-//					 */
-//					if(IsBlockLocked(i)) {
-//						epicAssert(!IsBlockWLocked(i));
-//						epicLog(LOG_INFO, "read locked while cache write(%d)", wr->op);
-//						//we increase the counter in case
-//						//we false call Notify()
-//						wr->counter++;
-//						unlock(i);
-//						wr->unlock();
-//						//worker->to_serve_local_requests[i].push(wr);
-//						worker->AddToServeLocalRequest(i, wr);
-//						return 1;
-//					}
+          //        we comment below deadlock handle since we add it the worker deadlock case 3
+          //					/*
+          //					 * below is used to avoid deadlock
+          //					 * when we are in transition state (want to get ownership) and read locked,
+          //					 * home node wants to invalidate it (home becomes in transition state).
+          //					 * both will block and the deadlock solution in worker.cc:1775 is not enough,
+          //					 * because read lock will block it forever
+          //					 * if the thread holding the lock wants to read the data (will be blocked
+          //					 * since it is in transition state)
+          //					 */
+          //					if(IsBlockLocked(i)) {
+          //						epicAssert(!IsBlockWLocked(i));
+          //						epicLog(LOG_INFO, "read locked while cache write(%d)", wr->op);
+          //						//we increase the counter in case
+          //						//we false call Notify()
+          //						wr->counter++;
+          //						unlock(i);
+          //						wr->unlock();
+          //						//worker->to_serve_local_requests[i].push(wr);
+          //						worker->AddToServeLocalRequest(i, wr);
+          //						return 1;
+          //					}
 
 #ifdef SELECTIVE_CACHING
           wr->flag &= ~NOT_CACHE;
 #endif
           wr->is_cache_hit_ = false;
-          WorkRequest* lwr = new WorkRequest(*wr);
+          WorkRequest *lwr = new WorkRequest(*wr);
           lwr->counter = 0;
-          lwr->op = WRITE_PERMISSION_ONLY;  //diff
+          lwr->op = WRITE_PERMISSION_ONLY; // diff
           lwr->flag |= CACHED;
           lwr->addr = i;
           lwr->size = BLOCK_SIZE;
-          lwr->ptr = cline->line;  //diff
-          if (wr->flag & ASYNC) {
-            if (!wr->IsACopy()) {
+          lwr->ptr = cline->line; // diff
+          if (wr->flag & ASYNC)
+          {
+            if (!wr->IsACopy())
+            {
               wr->unlock();
               wr = wr->Copy();
               wr->lock();
@@ -522,43 +736,49 @@ int Cache::ReadWrite(WorkRequest* wr) {
           }
           lwr->parent = wr;
           wr->counter++;
-          //to intermediate state
+          // to intermediate state
           epicAssert(state != CACHE_TO_DIRTY);
           ToToDirty(cline);
-          //worker->AddToPending(lwr->id, lwr);
+          // worker->AddToPending(lwr->id, lwr);
 
 #ifdef USE_LRU
-          //we unlink the cache to avoid it is evicted before
-          //the reply comes back
-          //in which case it will cause error
+          // we unlink the cache to avoid it is evicted before
+          // the reply comes back
+          // in which case it will cause error
           UnLinkLRU(cline);
 #endif
 
-          //short-circuit copy
-          //FIXME: advanced copy is not necessary
-          //since the cache line is in transition state,
-          //which will block other ops to proceed
+          // short-circuit copy
+          // FIXME: advanced copy is not necessary
+          // since the cache line is in transition state,
+          // which will block other ops to proceed
           epicAssert(len);
 #ifdef GFUNC_SUPPORT
-          if (!(wr->flag & GFUNC)) {
+          if (!(wr->flag & GFUNC))
+          {
             memcpy(cs, ls, len);
           }
 #else
           memcpy(cs, ls, len);
 #endif
 
-          //put submit request at last in case reply comes before we process afterwards works
+          // put submit request at last in case reply comes before we process afterwards works
           worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
-        } else {
+        }
+        else
+        {
 #ifdef GFUNC_SUPPORT
-          if (wr->flag & GFUNC) {
+          if (wr->flag & GFUNC)
+          {
             epicAssert(wr->gfunc);
             epicAssert(
-                TOBLOCK(wr->addr) == TOBLOCK(GADD(wr->addr, wr->size-1)));
+                TOBLOCK(wr->addr) == TOBLOCK(GADD(wr->addr, wr->size - 1)));
             epicAssert(i == start_blk);
-            void* laddr = cs;
+            void *laddr = cs;
             wr->gfunc(laddr, wr->arg);
-          } else {
+          }
+          else
+          {
 #endif
             epicAssert(len);
             worker->logWrite(wr->addr, len, ls);
@@ -572,28 +792,41 @@ int Cache::ReadWrite(WorkRequest* wr) {
           LinkLRU(cline);
 #endif
         }
-      } else {
+      }
+      else
+      {
         epicLog(LOG_WARNING, "unknown op in cache operations %d", wr->op);
         epicAssert(false);
       }
-    } else {
-      //worker->Just_for_test("cache invalid", wr);
-      WorkRequest* lwr = new WorkRequest(*wr);
+    }
+    else
+    {
+      // worker->Just_for_test("cache invalid", wr);
+      WorkRequest *lwr = new WorkRequest(*wr);
 #ifdef SELECTIVE_CACHING
-      if(!cline) {
+      if (!cline)
+      {
         newcline++;
         cline = SetCLine(i);
-      } else {
-        if (WRITE == wr->op) {
-            InitCacheCLine(cline, true);
-        } else {
-            InitCacheCLine(cline);
+      }
+      else
+      {
+        if (WRITE == wr->op)
+        {
+          InitCacheCLine(cline, true);
+        }
+        else
+        {
+          InitCacheCLine(cline);
         }
       }
-      if(!IsCachable(cline, lwr)) {
+      if (!IsCachable(cline, lwr))
+      {
         lwr->flag |= NOT_CACHE;
         cline->state = CACHE_NOT_CACHE;
-      } else {
+      }
+      else
+      {
         InitCacheCLineIfNeeded(cline);
       }
 #else
@@ -606,8 +839,10 @@ int Cache::ReadWrite(WorkRequest* wr) {
       lwr->size = BLOCK_SIZE;
       lwr->ptr = cline->line;
       wr->is_cache_hit_ = false;
-      if (wr->flag & ASYNC) {
-        if (!wr->IsACopy()) {
+      if (wr->flag & ASYNC)
+      {
+        if (!wr->IsACopy())
+        {
           wr->unlock();
           wr = wr->Copy();
           wr->lock();
@@ -615,14 +850,16 @@ int Cache::ReadWrite(WorkRequest* wr) {
       }
       lwr->parent = wr;
       wr->counter++;
-      //to intermediate state
-      if (READ == wr->op) {
+      // to intermediate state
+      if (READ == wr->op)
+      {
         epicAssert(cline->state != CACHE_TO_SHARED);
         ToToShared(cline);
 #ifdef SELECTIVE_CACHING
-        if(lwr->flag & NOT_CACHE) {
+        if (lwr->flag & NOT_CACHE)
+        {
           GAddr gs = i > start ? i : start;
-          void* cs = (void*)((ptr_t)cline->line + GMINUS(gs, i));
+          void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
           int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
           epicAssert(len > 0 && len <= BLOCK_SIZE);
           lwr->addr = gs;
@@ -630,17 +867,20 @@ int Cache::ReadWrite(WorkRequest* wr) {
           lwr->size = len;
         }
 #endif
-      } else {  //WRITE
-#ifdef SELECTIVE_CACHING
-      if(lwr->flag & NOT_CACHE) {
-        GAddr gs = i > start ? i : start;
-        void* ls = (void*)((ptr_t)wr->ptr + GMINUS(gs, start));
-        int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-        epicAssert(len > 0 && len <= BLOCK_SIZE);
-        lwr->addr = gs;
-        lwr->ptr = ls;
-        lwr->size = len;
       }
+      else
+      { // WRITE
+#ifdef SELECTIVE_CACHING
+        if (lwr->flag & NOT_CACHE)
+        {
+          GAddr gs = i > start ? i : start;
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          epicAssert(len > 0 && len <= BLOCK_SIZE);
+          lwr->addr = gs;
+          lwr->ptr = ls;
+          lwr->size = len;
+        }
 #endif
         epicAssert(cline->state != CACHE_TO_DIRTY);
         ToToDirty(cline);
@@ -653,15 +893,17 @@ int Cache::ReadWrite(WorkRequest* wr) {
   int ret = wr->counter;
   wr->unlock();
 #ifdef USE_LRU
-  if (newcline) {
-  //if (newcline && !(wr->flag & ASYNC)) {
+  if (newcline)
+  {
+    // if (newcline && !(wr->flag & ASYNC)) {
     Evict(newcline);
   }
 #endif
   return ret;
 }
 
-int Cache::Lock(WorkRequest* wr) {
+int Cache::Lock(WorkRequest *wr)
+{
 #ifdef NOCACHE
   epicLog(LOG_WARNING, "shouldn't come here");
   return 0;
@@ -669,21 +911,24 @@ int Cache::Lock(WorkRequest* wr) {
   epicAssert(RLOCK == wr->op || WLOCK == wr->op);
   int newcline = 0;
   GAddr i = TOBLOCK(wr->addr);
-  Client* cli = worker->GetClient(wr->addr);
+  Client *cli = worker->GetClient(wr->addr);
   GAddr start = wr->addr;
 
   wr->lock();
   lock(i);
-  CacheLine* cline = nullptr;
+  CacheLine *cline = nullptr;
 #ifdef SELECTIVE_CACHING
-  if((cline = GetCLine(i)) && cline->state != CACHE_NOT_CACHE) {
+  if ((cline = GetCLine(i)) && cline->state != CACHE_NOT_CACHE)
+  {
 #else
-  if ((cline = GetCLine(i))) {
+  if ((cline = GetCLine(i)))
+  {
 #endif
     CacheState state = cline->state;
-    //since transition state in cache is caused by local requests
-    //we allow to advance without checking
-    if (InTransitionState(state)) {
+    // since transition state in cache is caused by local requests
+    // we allow to advance without checking
+    if (InTransitionState(state))
+    {
       epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
       wr->is_cache_hit_ = false;
       worker->AddToServeLocalRequest(i, wr);
@@ -692,24 +937,30 @@ int Cache::Lock(WorkRequest* wr) {
       return 1;
     }
     epicAssert(state == CACHE_SHARED || state == CACHE_DIRTY);
-    if (RLOCK == wr->op) {
+    if (RLOCK == wr->op)
+    {
 #ifdef SELECTIVE_CACHING
-      if(!(wr->flag & TO_SERVE)) {
-    	  cline->nread++;
-    	  nread++;
+      if (!(wr->flag & TO_SERVE))
+      {
+        cline->nread++;
+        nread++;
       }
 #endif
-      if (RLock(cline, wr->addr)) {  //failed to lock
+      if (RLock(cline, wr->addr))
+      { // failed to lock
         epicLog(LOG_INFO, "cannot shared lock addr %lx, will try later", wr->addr);
 
         wr->is_cache_hit_ = false;
 
-        if (wr->flag & TRY_LOCK) {
+        if (wr->flag & TRY_LOCK)
+        {
           wr->status = LOCK_FAILED;
           unlock(i);
           wr->unlock();
           return SUCCESS;
-        } else {
+        }
+        else
+        {
           worker->AddToServeLocalRequest(i, wr);
           unlock(i);
           wr->unlock();
@@ -720,48 +971,54 @@ int Cache::Lock(WorkRequest* wr) {
       UnLinkLRU(cline);
       LinkLRU(cline);
 #endif
-    } else if (WLOCK == wr->op) {
+    }
+    else if (WLOCK == wr->op)
+    {
 #ifdef SELECTIVE_CACHING
-      if(!(wr->flag & TO_SERVE)) {
-    	  cline->nwrite++;
-    	  nwrite++;
+      if (!(wr->flag & TO_SERVE))
+      {
+        cline->nwrite++;
+        nwrite++;
       }
 #endif
-      if (state != CACHE_DIRTY) {
+      if (state != CACHE_DIRTY)
+      {
         epicAssert(state == CACHE_SHARED);
         wr->is_cache_hit_ = false;
 
-//        we comment below deadlock handle since we add it the worker deadlock case 3
-//				/*
-//				 * below is used to avoid deadlock
-//				 * when we are in transition state (want to get ownership) and read locked,
-//				 * home node wants to invalidate it (home becomes in transition state).
-//				 * both will block and the deadlock solution in worker.cc:deadlock case 1 is not enough,
-//				 * because read lock will block it forever
-//				 * if the thread holding the lock wants to read the data (will be blocked
-//				 * since it is in transition state)
-//				 */
-//				if(IsBlockLocked(i)) {
-//					epicAssert(!IsBlockWLocked(i));
-//					epicLog(LOG_INFO, "read locked while cache write(%d)", wr->op);
-//					if(wr->flag & TRY_LOCK) {
-//						return -1;
-//					} else {
-//						worker->to_serve_local_requests[i].push(wr);
-//						return 1;
-//					}
-//				}
+        //        we comment below deadlock handle since we add it the worker deadlock case 3
+        //				/*
+        //				 * below is used to avoid deadlock
+        //				 * when we are in transition state (want to get ownership) and read locked,
+        //				 * home node wants to invalidate it (home becomes in transition state).
+        //				 * both will block and the deadlock solution in worker.cc:deadlock case 1 is not enough,
+        //				 * because read lock will block it forever
+        //				 * if the thread holding the lock wants to read the data (will be blocked
+        //				 * since it is in transition state)
+        //				 */
+        //				if(IsBlockLocked(i)) {
+        //					epicAssert(!IsBlockWLocked(i));
+        //					epicLog(LOG_INFO, "read locked while cache write(%d)", wr->op);
+        //					if(wr->flag & TRY_LOCK) {
+        //						return -1;
+        //					} else {
+        //						worker->to_serve_local_requests[i].push(wr);
+        //						return 1;
+        //					}
+        //				}
 
-        WorkRequest* lwr = new WorkRequest(*wr);
+        WorkRequest *lwr = new WorkRequest(*wr);
         lwr->counter = 0;
-        lwr->op = WRITE_PERMISSION_ONLY;  //diff
+        lwr->op = WRITE_PERMISSION_ONLY; // diff
         lwr->flag |= CACHED;
         lwr->flag |= LOCKED;
         lwr->addr = i;
         lwr->size = BLOCK_SIZE;
-        lwr->ptr = cline->line;  //diff
-        if (wr->flag & ASYNC) {
-          if (!wr->IsACopy()) {
+        lwr->ptr = cline->line; // diff
+        if (wr->flag & ASYNC)
+        {
+          if (!wr->IsACopy())
+          {
             wr->unlock();
             wr = wr->Copy();
             wr->lock();
@@ -769,35 +1026,41 @@ int Cache::Lock(WorkRequest* wr) {
         }
         lwr->parent = wr;
         wr->counter++;
-        //to intermediate state
+        // to intermediate state
         epicAssert(state != CACHE_TO_DIRTY);
         ToToDirty(cline);
         worker->SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
 
 #ifdef USE_LRU
-        //we unlink the cache to avoid it is evicted before
-        //the reply comes back
-        //in which case it will cause error
+        // we unlink the cache to avoid it is evicted before
+        // the reply comes back
+        // in which case it will cause error
         UnLinkLRU(cline);
 #endif
-      } else {
+      }
+      else
+      {
 #ifdef USE_LRU
         UnLinkLRU(cline);
         LinkLRU(cline);
 #endif
 
-        if (WLock(cline, wr->addr)) {  //failed to lock
+        if (WLock(cline, wr->addr))
+        { // failed to lock
 
           wr->is_cache_hit_ = false;
           epicLog(LOG_INFO, "cannot exclusive lock addr %lx, will try later", wr->addr);
 
-          if (wr->flag & TRY_LOCK) {
+          if (wr->flag & TRY_LOCK)
+          {
             wr->status = LOCK_FAILED;
             unlock(i);
             wr->unlock();
             return SUCCESS;
-          } else {
-            //to_serve_local_requests[TOBLOCK(wr->addr)].push(wr);
+          }
+          else
+          {
+            // to_serve_local_requests[TOBLOCK(wr->addr)].push(wr);
             worker->AddToServeLocalRequest(i, wr);
             unlock(i);
             wr->unlock();
@@ -805,24 +1068,31 @@ int Cache::Lock(WorkRequest* wr) {
           }
         }
       }
-    } else {
+    }
+    else
+    {
       epicLog(LOG_WARNING, "unknown op in cache operations");
     }
-  } else {
+  }
+  else
+  {
     newcline++;
 #ifdef SELECTIVE_CACHING
-    if (!cline) {
+    if (!cline)
+    {
       cline = SetCLine(i);
-    } else {
+    }
+    else
+    {
       InitCacheCLine(cline);
     }
 #else
     cline = SetCLine(i);
 #endif
     wr->is_cache_hit_ = false;
-    WorkRequest* lwr = new WorkRequest(*wr);
-    //we hide the fact that it is whether a lock op or read/write from the remote side
-    //as lock is completely maintained locally
+    WorkRequest *lwr = new WorkRequest(*wr);
+    // we hide the fact that it is whether a lock op or read/write from the remote side
+    // as lock is completely maintained locally
     lwr->op = wr->op == RLOCK ? READ : WRITE;
     lwr->counter = 0;
     lwr->flag |= CACHED;
@@ -830,8 +1100,10 @@ int Cache::Lock(WorkRequest* wr) {
     lwr->addr = i;
     lwr->size = BLOCK_SIZE;
     lwr->ptr = cline->line;
-    if (wr->flag & ASYNC) {
-      if (!wr->IsACopy()) {
+    if (wr->flag & ASYNC)
+    {
+      if (!wr->IsACopy())
+      {
         wr->unlock();
         wr = wr->Copy();
         wr->lock();
@@ -839,11 +1111,14 @@ int Cache::Lock(WorkRequest* wr) {
     }
     lwr->parent = wr;
     wr->counter++;
-    //to intermediate state
-    if (RLOCK == wr->op) {
+    // to intermediate state
+    if (RLOCK == wr->op)
+    {
       epicAssert(cline->state != CACHE_TO_SHARED);
       ToToShared(cline);
-    } else {  //WLOCK
+    }
+    else
+    { // WLOCK
       epicAssert(cline->state != CACHE_TO_DIRTY);
       ToToDirty(cline);
     }
@@ -859,51 +1134,59 @@ int Cache::Lock(WorkRequest* wr) {
   return ret;
 }
 
-int Cache::Read(WorkRequest* wr) {
+int Cache::Read(WorkRequest *wr)
+{
   epicAssert(wr->op == READ);
   return ReadWrite(wr);
 }
 
-int Cache::Write(WorkRequest* wr) {
+int Cache::Write(WorkRequest *wr)
+{
   epicAssert(wr->op == WRITE);
   return ReadWrite(wr);
 }
 
-int Cache::RLock(WorkRequest* wr) {
+int Cache::RLock(WorkRequest *wr)
+{
   epicAssert(RLOCK == wr->op);
   return Lock(wr);
 }
 
-int Cache::WLock(WorkRequest* wr) {
+int Cache::WLock(WorkRequest *wr)
+{
   epicAssert(WLOCK == wr->op);
   return Lock(wr);
 }
 
-Cache::Cache(Worker* w)
+Cache::Cache(Worker *w)
     : to_evicted(0),
       read_miss(0),
       write_miss(0),
       used_bytes(0)
 #ifdef SELECTIVE_CACHING
-      ,nread(0),
+      ,
+      nread(0),
       nwrite(0),
       ntoshared(0),
       ntoinvalid(0)
 #endif
-      {
+{
   this->worker = w;
   max_cache_mem = w->conf->cache_th * w->conf->size;
 }
 
-void Cache::SetWorker(Worker* w) {
+void Cache::SetWorker(Worker *w)
+{
   this->worker = w;
   max_cache_mem = w->conf->cache_th * w->conf->size;
 }
 
-void* Cache::GetLine(GAddr addr) {
+void *Cache::GetLine(GAddr addr)
+{
   GAddr block = GTOBLOCK(addr);
-  if (caches.count(block)) {
-    CacheLine* cline = caches.at(block);
+  if (caches.count(block))
+  {
+    CacheLine *cline = caches.at(block);
     epicAssert(GetState(cline) != CACHE_INVALID);
     return cline->line;
   }
@@ -911,14 +1194,17 @@ void* Cache::GetLine(GAddr addr) {
 }
 
 #ifdef USE_LRU
-void Cache::LinkLRU(CacheLine* cline) {
+void Cache::LinkLRU(CacheLine *cline)
+{
 #ifdef USE_APPR_LRU
   cline->lru_clock = worker->GetClock();
 #else
   int j, i;
-  for (j = 0; j < sample_num; j++) {
+  for (j = 0; j < sample_num; j++)
+  {
     i = GetRandom(0, LRU_NUM);
-    if (lru_locks_[i].try_lock()) {
+    if (lru_locks_[i].try_lock())
+    {
       epicAssert(cline != heads[i]);
       epicAssert((heads[i] && tails[i]) || (!heads[i] && !tails[i]));
       cline->pos = i;
@@ -933,13 +1219,16 @@ void Cache::LinkLRU(CacheLine* cline) {
       break;
     }
   }
-  if (j == sample_num) {
+  if (j == sample_num)
+  {
     epicLog(LOG_WARNING,
             "cannot link to any random lru list by trying %d times",
             sample_num);
-    for (j = 0; j < LRU_NUM; j++) {
+    for (j = 0; j < LRU_NUM; j++)
+    {
       i = j;
-      if (lru_locks_[i].try_lock()) {
+      if (lru_locks_[i].try_lock())
+      {
         epicAssert(cline != heads[i]);
         epicAssert((heads[i] && tails[i]) || (!heads[i] && !tails[i]));
         cline->pos = i;
@@ -954,7 +1243,8 @@ void Cache::LinkLRU(CacheLine* cline) {
         break;
       }
     }
-    if (j == LRU_NUM) {
+    if (j == LRU_NUM)
+    {
       epicLog(LOG_WARNING, "cannot link to any lru list (total lru list %d)",
               LRU_NUM);
       i = GetRandom(0, LRU_NUM);
@@ -975,14 +1265,17 @@ void Cache::LinkLRU(CacheLine* cline) {
 #endif
 }
 
-//by calling this, we assume that it already got the lock for lru_list[i]
-void Cache::UnLinkLRU(CacheLine* cline, int i) {
+// by calling this, we assume that it already got the lock for lru_list[i]
+void Cache::UnLinkLRU(CacheLine *cline, int i)
+{
   epicAssert(i != -1);
-  if (heads[i] == cline) {
+  if (heads[i] == cline)
+  {
     epicAssert(cline->prev == 0);
     heads[i] = cline->next;
   }
-  if (tails[i] == cline) {
+  if (tails[i] == cline)
+  {
     epicAssert(cline->next == 0);
     tails[i] = cline->prev;
   }
@@ -997,11 +1290,13 @@ void Cache::UnLinkLRU(CacheLine* cline, int i) {
   cline->next = cline->prev = nullptr;
 }
 
-void Cache::UnLinkLRU(CacheLine* cline) {
+void Cache::UnLinkLRU(CacheLine *cline)
+{
 #ifdef USE_APPR_LRU
   return;
 #endif
-  if (cline->pos != -1) {
+  if (cline->pos != -1)
+  {
     int i = cline->pos;
     cline->pos = -1;
     lru_locks_[i].lock();
@@ -1010,19 +1305,22 @@ void Cache::UnLinkLRU(CacheLine* cline) {
   }
 }
 
-void Cache::Evict() {
+void Cache::Evict()
+{
   epicLog(LOG_INFO,
-      "used_bytes = %ld, max_cache_mem = %ld,  BLOCK_SIZE = %ld, th = %lf, to_evicted = %ld",
-      used_bytes.load(), max_cache_mem, BLOCK_SIZE, max_cache_mem,
-      worker->conf->cache_th, to_evicted.load());
+          "used_bytes = %ld, max_cache_mem = %ld,  BLOCK_SIZE = %ld, th = %lf, to_evicted = %ld",
+          used_bytes.load(), max_cache_mem, BLOCK_SIZE, max_cache_mem,
+          worker->conf->cache_th, to_evicted.load());
   long long used = used_bytes - to_evicted * BLOCK_SIZE;
-  if (used > 0 && used > max_cache_mem) {
+  if (used > 0 && used > max_cache_mem)
+  {
     int n = (used - max_cache_mem) / BLOCK_SIZE;
     epicLog(LOG_INFO,
-        "tryng to evict %d, used = %ld, max_cache_mem = %ld, used > max_cache_mem = %d",
-        n, used, max_cache_mem, used > max_cache_mem);
+            "tryng to evict %d, used = %ld, max_cache_mem = %ld, used > max_cache_mem = %d",
+            n, used, max_cache_mem, used > max_cache_mem);
     int ret = Evict(n);
-    if (ret < n) {
+    if (ret < n)
+    {
       epicLog(LOG_INFO, "only able to evict %d, but expect to evict %d", ret, n);
     }
   }
@@ -1033,7 +1331,8 @@ void Cache::Evict() {
  * return: true if we allow n more new cache lines
  * 		   false if we don't have enough free space for n more cache lines
  */
-int Cache::Evict(int n) {
+int Cache::Evict(int n)
+{
   long long used = used_bytes - to_evicted * BLOCK_SIZE;
   if (used < 0 || used <= max_cache_mem)
     return 0;
@@ -1043,8 +1342,10 @@ int Cache::Evict(int n) {
 #ifdef USE_APPR_LRU
   int i = 0;
   int max_samples = 3;
-  for(i = 0; i < n; i++) {
-    for(int j = 0; j < max_samples; j++) {
+  for (i = 0; i < n; i++)
+  {
+    for (int j = 0; j < max_samples; j++)
+    {
       not finished yet
     }
   }
@@ -1056,39 +1357,50 @@ int Cache::Evict(int n) {
   if (n > max_evict)
     n = max_evict;
   GAddr addr = Gnullptr;
-  for (i = 0; i < n; i++) {
+  for (i = 0; i < n; i++)
+  {
     int lru_no = GetRandom(0, LRU_NUM);
-    if (lru_locks_[lru_no].try_lock()) {
-      if (!tails[lru_no]) {
+    if (lru_locks_[lru_no].try_lock())
+    {
+      if (!tails[lru_no])
+      {
         epicLog(LOG_INFO, "No cache exists");
         lru_locks_[lru_no].unlock();
         return 0;
       }
-      CacheLine* to_evict = tails[lru_no];
+      CacheLine *to_evict = tails[lru_no];
       tried = 0;
-      while (to_evict) {  //only unlocked cache line can be evicted
+      while (to_evict)
+      { // only unlocked cache line can be evicted
         addr = to_evict->addr;
-        if (try_lock(addr)) {
-          if (unlikely(to_evict->locks.size() || InTransitionState(to_evict))) {
+        if (try_lock(addr))
+        {
+          if (unlikely(to_evict->locks.size() || InTransitionState(to_evict)))
+          {
             epicLog(LOG_INFO, "cache line (%lx) is locked", to_evict->addr);
             unlock(addr);
-          } else {
+          }
+          else
+          {
             break;
           }
         }
         tried++;
-        if (tried == tries) {
+        if (tried == tries)
+        {
           to_evict = nullptr;
           break;
         }
         to_evict = to_evict->prev;
       }
 
-      if (to_evict) {
-        UnLinkLRU(to_evict, to_evict->pos);  //since we already got the lock in the parent function of Evict(CacheLine*)
+      if (to_evict)
+      {
+        UnLinkLRU(to_evict, to_evict->pos); // since we already got the lock in the parent function of Evict(CacheLine*)
       }
       lru_locks_[lru_no].unlock();
-      if (!to_evict) {
+      if (!to_evict)
+      {
         epicLog(LOG_INFO, "all the cache lines are searched");
         continue;
       }
@@ -1103,7 +1415,8 @@ int Cache::Evict(int n) {
 #endif
 }
 
-void Cache::Evict(CacheLine* cline) {
+void Cache::Evict(CacheLine *cline)
+{
   epicLog(LOG_INFO, "evicting %lx", cline->addr);
   epicAssert(cline->addr == TOBLOCK(cline->addr));
   epicAssert(!IsBlockLocked(cline->addr));
@@ -1111,56 +1424,69 @@ void Cache::Evict(CacheLine* cline) {
   epicAssert(caches.at(cline->addr) == cline);
   int state = cline->state;
 
-  WorkRequest* wr = new WorkRequest();
+  WorkRequest *wr = new WorkRequest();
   wr->addr = cline->addr;
   wr->ptr = cline->line;
-  Client* cli = worker->GetClient(cline->addr);
-  if (CACHE_SHARED == state) {
+  Client *cli = worker->GetClient(cline->addr);
+  if (CACHE_SHARED == state)
+  {
     wr->op = ACTIVE_INVALIDATE;
     ToInvalid(cline);
     worker->SubmitRequest(cli, wr);
     delete wr;
     wr = nullptr;
-  } else if (CACHE_DIRTY == state) {
+  }
+  else if (CACHE_DIRTY == state)
+  {
     wr->op = WRITE_BACK;
     cli->Write(cli->ToLocal(wr->addr), cline->line, BLOCK_SIZE);
     ToToInvalid(cline);
-//  UnLinkLRU(cline, pos); //since we already got the lock in the parent function of Evict(CacheLine*)
+    //  UnLinkLRU(cline, pos); //since we already got the lock in the parent function of Evict(CacheLine*)
     worker->SubmitRequest(worker->GetClient(wr->addr), wr,
                           ADD_TO_PENDING | REQUEST_SEND);
-  } else {  //invalid
+  }
+  else
+  { // invalid
     epicAssert(CACHE_INVALID == state);
     epicLog(LOG_INFO, "unexpected cache state when evicting");
   }
 }
 #endif
 
-CacheLine* Cache::SetCLine(GAddr addr, void* line) {
+CacheLine *Cache::SetCLine(GAddr addr, void *line)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  CacheLine* cl = nullptr;
-  if (caches.count(block)) {
+  CacheLine *cl = nullptr;
+  if (caches.count(block))
+  {
     epicLog(LOG_INFO, "cache line for gaddr %lx already exist in the cache",
             addr);
     cl = caches.at(block);
-    if (line) {
-      worker->sb.sb_free((byte*) cl->line - CACHE_LINE_PREFIX);
+    if (line)
+    {
+      worker->sb.sb_free((byte *)cl->line - CACHE_LINE_PREFIX);
       used_bytes -= (BLOCK_SIZE + CACHE_LINE_PREFIX);
       cl->line = line;
       cl->addr = block;
       epicLog(LOG_WARNING, "should not use for now");
     }
-  } else {
+  }
+  else
+  {
     cl = new CacheLine();
-    if (line) {
+    if (line)
+    {
       cl->line = line;
       epicLog(LOG_WARNING, "should not use for now");
-    } else {
+    }
+    else
+    {
       caddr ptr = worker->sb.sb_aligned_calloc(1,
                                                BLOCK_SIZE + CACHE_LINE_PREFIX);
       used_bytes += (BLOCK_SIZE + CACHE_LINE_PREFIX);
       //*(byte*) ptr = CACHE_INVALID;
-      ptr = (byte*) ptr + CACHE_LINE_PREFIX;
+      ptr = (byte *)ptr + CACHE_LINE_PREFIX;
       cl->line = ptr;
       cl->addr = block;
     }
@@ -1169,52 +1495,65 @@ CacheLine* Cache::SetCLine(GAddr addr, void* line) {
   return cl;
 }
 
-void* Cache::SetLine(GAddr addr, caddr line) {
+void *Cache::SetLine(GAddr addr, caddr line)
+{
   return SetCLine(addr, line)->line;
 }
 
-void Cache::ToShared(GAddr addr) {
+void Cache::ToShared(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     ToShared(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
 
 #ifdef SELECTIVE_CACHING
-void Cache::ToNotCache(CacheLine* cline, bool write) {
+void Cache::ToNotCache(CacheLine *cline, bool write)
+{
   cline->state = CACHE_NOT_CACHE;
 
-  if (write) return;
+  if (write)
+    return;
 
-  worker->sb.sb_free((char*)cline->line-CACHE_LINE_PREFIX);
+  worker->sb.sb_free((char *)cline->line - CACHE_LINE_PREFIX);
   used_bytes -= (BLOCK_SIZE + CACHE_LINE_PREFIX);
   cline->line = nullptr;
 }
 #endif
 
-void Cache::UndoShared(GAddr addr) {
+void Cache::UndoShared(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     UndoShared(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
 /* add ergeda add */
-void Cache::DeleteCache(CacheLine * cline) {
-  void* line = cline->line;
-  worker->sb.sb_free((char*) line - CACHE_LINE_PREFIX);
+void Cache::DeleteCache(CacheLine *cline)
+{
+  void *line = cline->line;
+  worker->sb.sb_free((char *)line - CACHE_LINE_PREFIX);
   used_bytes -= (BLOCK_SIZE + CACHE_LINE_PREFIX);
 
-  //epicAssert(!IsBlockLocked(cline)); //啥意思这句
+  // epicAssert(!IsBlockLocked(cline)); //啥意思这句
 
-  if (!caches.erase(cline->addr)) {
+  if (!caches.erase(cline->addr))
+  {
     epicLog(LOG_WARNING, "cannot invalidate the cache line");
   }
 
@@ -1223,13 +1562,14 @@ void Cache::DeleteCache(CacheLine * cline) {
 }
 /* add ergeda add */
 
-void Cache::ToInvalid(CacheLine* cline) {
+void Cache::ToInvalid(CacheLine *cline)
+{
 #ifdef SELECTIVE_CACHING
   cline->ntoinvalid++;
   ntoinvalid++;
 #endif
-  void* line = cline->line;
-  worker->sb.sb_free((char*) line - CACHE_LINE_PREFIX);
+  void *line = cline->line;
+  worker->sb.sb_free((char *)line - CACHE_LINE_PREFIX);
   used_bytes -= (BLOCK_SIZE + CACHE_LINE_PREFIX);
 
   epicAssert(!IsBlockLocked(cline));
@@ -1237,7 +1577,8 @@ void Cache::ToInvalid(CacheLine* cline) {
 #ifdef USE_LRU
   UnLinkLRU(cline);
 #endif
-  if (!caches.erase(cline->addr)) {
+  if (!caches.erase(cline->addr))
+  {
     epicLog(LOG_WARNING, "cannot invalidate the cache line");
   }
 #ifdef SELECTIVE_CACHING
@@ -1248,27 +1589,34 @@ void Cache::ToInvalid(CacheLine* cline) {
 #endif
 }
 
-void Cache::ToInvalid(GAddr addr) {
+void Cache::ToInvalid(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  CacheLine* cline = nullptr;
-  try {
+  CacheLine *cline = nullptr;
+  try
+  {
     cline = caches.at(block);
     ToInvalid(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     epicAssert(false);
   }
-
 }
 
-void Cache::ToDirty(GAddr addr) {
+void Cache::ToDirty(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     ToDirty(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
@@ -1278,13 +1626,17 @@ void Cache::ToDirty(GAddr addr) {
  * in transition from invalid to shared
  * READ Case 2
  */
-void Cache::ToToShared(GAddr addr) {
+void Cache::ToToShared(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     ToToShared(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
@@ -1292,13 +1644,17 @@ void Cache::ToToShared(GAddr addr) {
 /*
  * not used for now
  */
-void Cache::ToToInvalid(GAddr addr) {
+void Cache::ToToInvalid(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     ToToInvalid(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
@@ -1308,134 +1664,179 @@ void Cache::ToToInvalid(GAddr addr) {
  * in transition from invalid/shared to dirty
  * WRITE Case 3, 4 (invalid/shared to dirty)
  */
-void Cache::ToToDirty(GAddr addr) {
+void Cache::ToToDirty(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     ToToDirty(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
   }
 }
 
-CacheState Cache::GetState(GAddr addr) {
+CacheState Cache::GetState(GAddr addr)
+{
   epicAssert(addr == GTOBLOCK(addr));
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return cline->state;
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     return CACHE_NOT_EXIST;
   }
 }
 
-bool Cache::InTransitionState(GAddr addr) {
+bool Cache::InTransitionState(GAddr addr)
+{
   CacheState s = GetState(addr);
   return InTransitionState(s);
 }
 
-int Cache::RLock(GAddr addr) {
+int Cache::RLock(GAddr addr)
+{
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return RLock(cline, addr);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     return -1;
   }
 }
 
-int Cache::WLock(GAddr addr) {
+int Cache::WLock(GAddr addr)
+{
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return WLock(cline, addr);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     return -1;
   }
 }
 
-bool Cache::IsWLocked(GAddr addr) {
+bool Cache::IsWLocked(GAddr addr)
+{
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return IsWLocked(cline, addr);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     return false;
   }
 }
 
-bool Cache::IsRLocked(GAddr addr) {
+bool Cache::IsRLocked(GAddr addr)
+{
   GAddr block = GTOBLOCK(addr);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return IsRLocked(cline, addr);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_WARNING, "Unexpected: cannot find the cache line");
     return false;
   }
 }
 
-void Cache::UnLock(GAddr addr) {
+void Cache::UnLock(GAddr addr)
+{
   GAddr block = GTOBLOCK(addr);
   lock(block);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     epicAssert(cline->locks.count(addr));
-    if (cline->locks.at(addr) == EXCLUSIVE_LOCK_TAG) {  //exclusive lock
+    if (cline->locks.at(addr) == EXCLUSIVE_LOCK_TAG)
+    { // exclusive lock
       cline->locks.erase(addr);
-    } else {
-      cline->locks.at(addr)--;
-      if (cline->locks.at(addr) == 0) cline->locks.erase(addr);
     }
-  } catch (const exception& e) {
+    else
+    {
+      cline->locks.at(addr)--;
+      if (cline->locks.at(addr) == 0)
+        cline->locks.erase(addr);
+    }
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     epicAssert(false);
   }
   unlock(block);
 }
 
-bool Cache::IsBlockLocked(GAddr block) {
+bool Cache::IsBlockLocked(GAddr block)
+{
   epicAssert(GTOBLOCK(block) == block);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return IsBlockLocked(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     return false;
   }
 }
 
-bool Cache::IsBlockWLocked(GAddr block) {
+bool Cache::IsBlockWLocked(GAddr block)
+{
   epicAssert(GTOBLOCK(block) == block);
-  try {
-    CacheLine* cline = caches.at(block);
+  try
+  {
+    CacheLine *cline = caches.at(block);
     return IsBlockWLocked(cline);
-  } catch (const exception& e) {
+  }
+  catch (const exception &e)
+  {
     epicLog(LOG_FATAL, "Unexpected: cannot find the cache line");
     return false;
   }
 }
 
 #ifdef SELECTIVE_CACHING
-void Cache::InitCacheCLine(CacheLine* cline, bool write) {
+void Cache::InitCacheCLine(CacheLine *cline, bool write)
+{
   cline->state = CACHE_INVALID;
   cline->line = nullptr;
-  
-  if (write) return;
+
+  if (write)
+    return;
 
   caddr ptr = worker->sb.sb_aligned_calloc(1, BLOCK_SIZE + CACHE_LINE_PREFIX);
   used_bytes += (BLOCK_SIZE + CACHE_LINE_PREFIX);
   //*(byte*) ptr = CACHE_INVALID;
-  ptr = (byte*) ptr + CACHE_LINE_PREFIX;
+  ptr = (byte *)ptr + CACHE_LINE_PREFIX;
   cline->line = ptr;
 }
 
-void Cache::InitCacheCLineIfNeeded(CacheLine* cline) {
-    if (!cline->line) InitCacheCLine(cline);
+void Cache::InitCacheCLineIfNeeded(CacheLine *cline)
+{
+  if (!cline->line)
+    InitCacheCLine(cline);
 }
 #endif
