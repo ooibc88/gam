@@ -5,6 +5,9 @@ CFLAGS += -g -rdynamic
 
 build: benchmark lru_test example example-r worker master slab_test rw_test fence_test lock_test hashtable_test hashtable_throw_test garray_test cs_test test
 
+t:t1.cc
+	$(CPP) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS)
+	
 benchmark: benchmark.cc
 	$(CPP) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS) 
 

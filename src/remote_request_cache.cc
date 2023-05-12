@@ -1221,3 +1221,118 @@ void Worker::ProcessRemoteWeInv(Client * client, WorkRequest * wr) {
 }
 
 /* add ergeda add */
+
+/* add wpq add */
+void Worker::ProcessRemoteWriteSharedRead(Client *client, WorkRequest *wr)
+{
+
+  GAddr blk = TOBLOCK(wr->addr);
+  cache.lock(blk);
+  CacheLine *cline = cache.GetCLine(blk);
+
+  client->WriteWithImm(wr->ptr, cline->line, wr->size, wr->id); // reply to the local home node
+
+  cache.unlock(blk);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessPendingWritesharedRead(Client *client, WorkRequest *wr)
+{
+  epicAssert(wr->parent);
+  WorkRequest *parent = wr->parent;
+  CacheLine *cline = nullptr;
+  DirEntry *entry = nullptr;
+  GAddr blk = TOBLOCK(wr->addr);
+
+  parent->lock();
+
+  directory.lock(ToLocal(wr->addr));
+  entry = directory.GetEntry(ToLocal(wr->addr));
+  epicAssert(entry);
+
+  if (!(wr->flag & LOCKED))
+  {
+    GAddr pend = GADD(parent->addr, parent->size);
+    GAddr end = GADD(wr->addr, wr->size);
+    GAddr gs = wr->addr > parent->addr ? wr->addr : parent->addr;
+    void *ls = (void *)((ptr_t)parent->ptr + GMINUS(gs, parent->addr));
+    void *cs = (void *)((ptr_t)wr->ptr + GMINUS(gs, wr->addr));
+    Size len = end > pend ? GMINUS(pend, gs) : GMINUS(end, gs);
+    memcpy(ls, cs, len);
+  }
+
+  // update the cache or directory states
+  if (!(wr->flag & REPEATED))
+  {
+    if ((wr->flag & CACHED))
+    { // read is issued by the cache (remote memory)
+      epicAssert(wr->op == READ);
+      epicAssert(!IsLocal(wr->addr));
+      cache.ToShared(cline);
+    }
+    else if (IsLocal(wr->addr))
+    { // read is issued by local worker (local memory)
+      epicAssert(wr->op == FETCH_AND_SHARED);
+      directory.ToShared(entry, Gnullptr);
+    }
+    else
+    {
+      epicLog(LOG_WARNING, "unexpected!!!");
+    }
+
+    int ret = ErasePendingWork(wr->id);
+    epicAssert(ret);
+  }
+
+  if (wr->flag & LOCKED)
+  { // RLOCK
+    epicAssert(
+        !(wr->flag & NOT_CACHE) && wr->addr == blk && wr->size == BLOCK_SIZE);
+    epicAssert(
+        RLOCK == parent->op && 1 == parent->counter && 0 == parent->size);
+    if (wr->flag & CACHED)
+    { // RLOCK is issued by the cache (remote memory)
+      epicAssert(wr->ptr == cline->line);
+      epicAssert(!IsLocal(wr->addr));
+      int ret = cache.RLock(cline, parent->addr);
+      epicAssert(!ret); // first rlock must be successful
+    }
+    else if (IsLocal(wr->addr))
+    { // RLock is issued by local worker (local memory)
+      epicAssert(ToLocal(wr->addr) == wr->ptr);
+      int ret;
+      if (entry)
+      {
+        ret = directory.RLock(entry, ToLocal(parent->addr));
+      }
+      else
+      {
+        ret = directory.RLock(ToLocal(parent->addr)); // the dir entry may be deleted
+      }
+      epicAssert(!ret); // first rlock must be successful
+    }
+    else
+    {
+      epicLog(LOG_WARNING, "unexpected!!!");
+    }
+  }
+
+  directory.unlock(ToLocal(wr->addr));
+
+  if (--parent->counter == 0)
+  { // read all the data
+    parent->unlock();
+    Notify(parent);
+  }
+  else
+  {
+    parent->unlock();
+  }
+
+  ProcessToServeRequest(wr);
+  delete wr;
+  wr = nullptr;
+}
+
+/* add wpq add */

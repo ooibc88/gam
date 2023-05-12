@@ -6,10 +6,12 @@
 
 #include <cassert>
 
-#define LOG_FATAL 0
-#define LOG_WARNING 1
-#define LOG_INFO 2
-#define LOG_DEBUG 3
+#define LOG_TEST 0
+#define LOG_PQ 1
+#define LOG_FATAL 2
+#define LOG_WARNING 3
+#define LOG_INFO 4
+#define LOG_DEBUG 5
 
 #define MAX_LOGMSG_LEN    1024 /* Default maximum length of syslog messages */
 
