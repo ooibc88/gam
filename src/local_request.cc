@@ -391,7 +391,11 @@ int Worker::ProcessLocalRequest(WorkRequest *wr)
   }
   else if (WRITE == wr->op)
   {
+#ifdef ReleaseConsistency
+    ret = ProcessLocalWrite_RC(wr);
+#else
     ret = ProcessLocalWrite(wr);
+#endif
   }
   else if (MFENCE == wr->op)
   {

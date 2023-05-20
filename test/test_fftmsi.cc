@@ -20,7 +20,7 @@
 
 using namespace std;
 #define PI acos(-1)
-#define N 1024*4 // FFT点数
+#define N 1024 * 4 // FFT点数
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
 float xn[N];       // 采样信号序列
@@ -31,14 +31,15 @@ Worker *worker[10];
 Master *master;
 int num_worker = 0;
 int num_threads = 4;
-int iteration_times=0;
+int iteration_times = 0;
+WorkerHandle *malloc_wh;
+int parrallel_num = 1;
 
 void Create_master()
 {
     Conf *conf = new Conf();
-    // conf->loglevel = LOG_PQ;
+    // conf->loglevel = LOG_DEBUG;
     conf->loglevel = LOG_TEST;
-    // conf->loglevel = LOG_WARNING;
     GAllocFactory::SetConf(conf);
     master = new Master(*conf);
 }
@@ -125,8 +126,8 @@ void dit_r2_fft(GAddr addr_xn, int n, int stride, GAddr addr_Xk, WorkerHandle *C
 {
     complex<float> X1k[n / 2];
     complex<float> X2k[n / 2];
-    GAddr addr_X1k = Malloc_addr(Cur_wh, sizeof(complex<float>) * n / 2, Msi, 1);
-    GAddr addr_X2k = Malloc_addr(Cur_wh, sizeof(complex<float>) * n / 2, Msi, 1);
+    GAddr addr_X1k = Malloc_addr(malloc_wh, sizeof(complex<float>) * n / 2, Msi, 1);
+    GAddr addr_X2k = Malloc_addr(malloc_wh, sizeof(complex<float>) * n / 2, Msi, 1);
 
     if (n == 1)
     {
@@ -139,17 +140,17 @@ void dit_r2_fft(GAddr addr_xn, int n, int stride, GAddr addr_Xk, WorkerHandle *C
     }
     else
     {
-        if (n >= N)
+        if (n >= N * 2 / parrallel_num)
         {
             // 0,2,4,..n-4,n-2;
             // 1,3,5,..n-3,n-1;
-            
-            thread t1(dit_r2_fft, addr_xn, n / 2, 2 * stride, addr_X1k, wh[0]);
-            thread t2(dit_r2_fft, addr_xn + stride * sizeof(float), n / 2, 2 * stride, addr_X2k, wh[1]);
+
+            thread t1(dit_r2_fft, addr_xn, n / 2, 2 * stride, addr_X1k, wh[1]);
+            thread t2(dit_r2_fft, addr_xn + stride * sizeof(float), n / 2, 2 * stride, addr_X2k, wh[2]);
             t1.join();
             t2.join();
         }
-        
+
         else
         {
             // 偶数n/2点DFT
@@ -179,8 +180,6 @@ void dit_r2_fft(GAddr addr_xn, int n, int stride, GAddr addr_Xk, WorkerHandle *C
         }
     }
 
-
-
     Free_addr(Cur_wh, addr_X1k);
     Free_addr(Cur_wh, addr_X2k);
 }
@@ -191,6 +190,7 @@ void Solve()
     {
         Create_worker();
     }
+    malloc_wh = wh[0];
 
     sleep(1);
 
@@ -200,20 +200,20 @@ void Solve()
     {
         xn[i] = 0.7 * sin(2 * PI * 50 * dt * i) + sin(2 * PI * 120 * dt * i);
     }
-    GAddr addr_xn = Malloc_addr(wh[0], sizeof(float) * N, Msi, 1);
+    GAddr addr_xn = Malloc_addr(malloc_wh, sizeof(float) * N, Msi, 1);
     for (int i = 0; i < N; i++)
     {
-        Write_val(wh[0], addr_xn + i * sizeof(float), (int *)&xn[i], sizeof(float));
+        Write_val(malloc_wh, addr_xn + i * sizeof(float), (int *)&xn[i], sizeof(float));
     }
 
-    GAddr addr_Xk = Malloc_addr(wh[0], sizeof(complex<float>) * N, Msi, 1);
+    GAddr addr_Xk = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Msi, 1);
 
     int Iteration = iteration_times;
     printf("Start\n");
     long Start = get_time();
     for (int round = 0; round < Iteration; ++round)
     {
-        dit_r2_fft(addr_xn, N, 1, addr_Xk, wh[0]);
+        dit_r2_fft(addr_xn, N, 1, addr_Xk, malloc_wh);
     }
 
     // for(int i=0;i<N;i++)
@@ -221,7 +221,6 @@ void Solve()
     //     Read_val(wh[0], addr_Xk + i * sizeof(complex<float>), (int *)&Xk[i], sizeof(complex<float>));
     //     printf("Xk[%d]=%f+%fi\n",i,Xk[i].real(),Xk[i].imag());
     // }
-
 
     long End = get_time();
     printf("End\n");

@@ -115,4 +115,10 @@ enum DataState {
 
 /* add ergeda add */
 
+
+/* add wpq add */
+// #define ReleaseConsistency
+
+/* add wpq add */
+
 #endif /* INCLUDE_SETTINGS_H_ */

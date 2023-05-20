@@ -253,6 +253,7 @@ public:
   int ProcessLocalMalloc(WorkRequest *wr);
   int ProcessLocalFree(WorkRequest *wr);
   int ProcessLocalWrite(WorkRequest *wr);
+  int ProcessLocalWrite_RC(WorkRequest *wr);
   int ProcessLocalRead(WorkRequest *wr);
   int ProcessLocalWLock(WorkRequest *wr);
   int ProcessLocalRLock(WorkRequest *wr);
@@ -268,6 +269,7 @@ public:
   void ProcessRemoteReadCache(Client *client, WorkRequest *wr);
   void ProcessRemoteReadReply(Client *client, WorkRequest *wr);
   void ProcessRemoteWrite(Client *client, WorkRequest *wr);
+
   void ProcessRemoteWriteCache(Client *client, WorkRequest *wr);
   void ProcessRemoteWriteReply(Client *client, WorkRequest *wr);
   void ProcessRemoteEvictShared(Client *client, WorkRequest *wr);

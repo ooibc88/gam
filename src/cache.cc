@@ -801,6 +801,7 @@ int Cache::ReadWrite(WorkRequest *wr)
     }
     else
     {
+      epicLog(LOG_DEBUG, "cache miss,optype = %d", wr->op);
       // worker->Just_for_test("cache invalid", wr);
       WorkRequest *lwr = new WorkRequest(*wr);
 #ifdef SELECTIVE_CACHING
