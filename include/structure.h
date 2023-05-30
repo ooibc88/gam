@@ -42,8 +42,8 @@ struct Conf {
   bool is_master = true;  //mark whether current process is the master (obtained from conf and the current ip)
   //int master_port = 12345;
   /* add ergeda add */
-  int master_port = 49629;
-  int worker_port = 49630;
+  int master_port = 48629;
+  int worker_port = 48630;
   /* add ergeda add */
   std::string master_ip = "localhost";
   std::string master_bindaddr;

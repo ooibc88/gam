@@ -20,7 +20,7 @@
 
 using namespace std;
 #define PI acos(-1)
-#define N 1024 * 4 // FFT点数
+#define N 64       // FFT点数
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
 float xn[N];       // 采样信号序列
@@ -33,13 +33,13 @@ int num_worker = 0;
 int num_threads = 4;
 int iteration_times = 0;
 WorkerHandle *malloc_wh;
-int parrallel_num = 1;
+int parrallel_num = 2;
 
 void Create_master()
 {
     Conf *conf = new Conf();
-    // conf->loglevel = LOG_DEBUG;
-    conf->loglevel = LOG_TEST;
+    conf->loglevel = LOG_DEBUG;
+    // conf->loglevel = LOG_TEST;
     GAllocFactory::SetConf(conf);
     master = new Master(*conf);
 }
@@ -58,6 +58,7 @@ void Read_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
 {
     WorkRequest wr{};
     wr.op = READ;
+    wr.wid = Cur_wh->GetWorkerId();
     wr.flag = 0;
     wr.size = size;
     wr.addr = addr;
@@ -75,6 +76,7 @@ void Write_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
     {
         wr.Reset();
         wr.op = WRITE;
+        wr.wid = Cur_wh->GetWorkerId();
         // wr.flag = ASYNC; // 可以在这里调
         wr.size = size;
         wr.addr = addr;
@@ -185,11 +187,7 @@ void dit_r2_fft(GAddr addr_xn, int n, int stride, GAddr addr_Xk, WorkerHandle *C
 }
 void Solve()
 {
-    Create_master();
-    for (int i = 0; i < 3; ++i)
-    {
-        Create_worker();
-    }
+
     malloc_wh = wh[0];
 
     sleep(1);
@@ -226,12 +224,35 @@ void Solve()
     printf("End\n");
     printf("running time : %ld\n", End - Start);
 }
+void preTest()
+{
+    malloc_wh = wh[0];
+    GAddr addr_m = Malloc_addr(malloc_wh, sizeof(float) * 2, Msi, 1);
+    for (int i = 0; i < 2; i++)
+    {
+        Write_val(malloc_wh, addr_m + i * sizeof(float), (int *)&xn[i], sizeof(float));
+    }
+    float m[2];
+    Read_val(malloc_wh, addr_m, (int *)&m[0], sizeof(float));
+    Read_val(malloc_wh, addr_m + sizeof(float), (int *)&m[1], sizeof(float));
+    printf("m[0]=%f\n", m[0]);
+    printf("m[1]=%f\n", m[1]);
+    Free_addr(malloc_wh, addr_m);
+   
+}
+
 int main(int argc, char *argv[])
 {
     iteration_times = atoi(argv[1]);
     srand(time(NULL));
     curlist = ibv_get_device_list(NULL);
+    Create_master();
+    for (int i = 0; i < 3; ++i)
+    {
+        Create_worker();
+    }
 
-    Solve();
+    // Solve();
+    preTest();
     return 0;
 }

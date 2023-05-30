@@ -1,6 +1,6 @@
 rm -rf t
-iteration=10
-# echo "" > output.txt
+iteration=1
+echo "" > output.txt
 make t
-# ./t $iteration >> output.txt 
-./t $iteration
+./t $iteration >> output.txt 
+# ./t $iteration

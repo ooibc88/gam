@@ -9,6 +9,8 @@
 
 int Cache::ReadWrite(WorkRequest *wr)
 {
+  epicLog(LOG_DEBUG, "op=%d, addr=%lx, size=%d", wr->op, wr->addr, wr->size);
+  epicLog(LOG_DEBUG, "wid=%d", wr->wid);
 #ifdef NOCACHE
   epicLog(LOG_WARNING, "shouldn't come here");
   return 0;
@@ -591,15 +593,48 @@ int Cache::ReadWrite(WorkRequest *wr)
         continue;
       }
     }
+    else if (Cur_Dstate == DataState::RC_WRITE_SHARED)
+    {
+      epicLog(LOG_DEBUG, "RC_WRITE_SHARED, GetWorkerId=%d\n", worker->GetWorkerId());
+      int offset = wr->addr - TOBLOCK(wr->addr);
+
+      CacheLine *cline = nullptr;
+      if (cline = GetCLine(i))
+      {
+        epicLog(LOG_DEBUG, "GetCLine SUCCESS,i=%lx\n",i);
+      }
+      else
+      {
+        epicLog(LOG_DEBUG, "GetCLine Failure,i=%lx\n",i);
+        cline = SetCLine(i);
+      }
+
+      GAddr gs = i > start ? i : start;
+      epicAssert(GMINUS(nextb, gs) > 0);
+      void *cs = (void *)((ptr_t)cline->line + GMINUS(gs, i));
+      void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
+      int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+      if (wr->op == READ)
+        memcpy(ls, cs, len);
+      else if (wr->op == WRITE)
+        memcpy(cs, ls, len);
+
+      epicLog(LOG_DEBUG,"wr->op=%d,offset=%d,cs= %lx, ls = %lx\n",
+                            wr->op,offset,cs,ls);
+
+
+      unlock(i);
+      i = nextb;
+      continue;
+    }
     lock(i);
     CacheLine *cline = nullptr;
 #ifdef SELECTIVE_CACHING
     if ((cline = GetCLine(i)) && cline->state != CACHE_NOT_CACHE)
-    {
 #else
     if ((cline = GetCLine(i)))
-    {
 #endif
+    {
       CacheState state = cline->state;
       // FIXME: may violate the ordering guarantee of single thread
       // special processing when cache is in process of eviction

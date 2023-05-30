@@ -886,6 +886,11 @@ void Worker::ProcessPendingRequest(Client *cli, WorkRequest *wr)
     ProcessPendingWritesharedRead(cli, wr);
     break;
   }
+  case completeFlush:
+  {
+    ProcessFlushToHome(cli, wr);
+    break;
+  }
     /* add wpq add */
   default:
     epicLog(LOG_WARNING, "unrecognized work request %d", wr->op);

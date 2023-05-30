@@ -95,7 +95,9 @@ enum Work
   writeshared_WRITE,
   writeshared_WRITE_REPLY,
   ChangeSubLog,
-  writeshared_READ
+  writeshared_READ,
+  completeFlush,
+  flushToHomeOp
   /* add wpq add */
 };
 
@@ -142,7 +144,8 @@ typedef int Flag;
 #define Access_exclusive (1 << 18)
 #define Write_exclusive (1 << 19)
 #define Write_shared (1 << 20)
-#define Add_list (1 << 21) // 表示是第一次访问，需要加入shared_list(read_mostly)
+#define RC_Write_shared (1 << 21)
+#define Add_list (1 << 23) // 表示是第一次访问，需要加入shared_list(read_mostly)
 /* add ergeda add */
 
 #define MASK_ID 1

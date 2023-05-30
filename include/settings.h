@@ -110,7 +110,8 @@ enum DataState {
   READ_MOSTLY,
   ACCESS_EXCLUSIVE,
   WRITE_EXCLUSIVE,
-  WRITE_SHARED
+  WRITE_SHARED,
+  RC_WRITE_SHARED
 };
 
 /* add ergeda add */
@@ -118,6 +119,9 @@ enum DataState {
 
 /* add wpq add */
 // #define ReleaseConsistency
+
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#define likely(x) __builtin_expect(!!(x), 1)
 
 /* add wpq add */
 

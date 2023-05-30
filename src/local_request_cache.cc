@@ -1,4 +1,5 @@
 // Copyright (c) 2018 The GAM Authors
+#include "worker.h"
 
 int Worker::ProcessLocalRead(WorkRequest *wr)
 {
@@ -238,6 +239,20 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
             SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
           }
           directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+        else if (Ds == RC_WRITE_SHARED)
+        {
+          epicLog(LOG_DEBUG, "RC_WRITE_SHARED,wr->addr=%lx\n", wr->addr);
+
+          GAddr gs = i > start ? i : start;
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          epicLog(LOG_DEBUG, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
+
+          memcpy(ls, ToLocal(gs), len); // 直接复制就行
+
           i = nextb;
           continue;
         }
@@ -674,10 +689,12 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
        */
       if (state == DIR_DIRTY || state == DIR_SHARED)
       {
-        if(state == DIR_DIRTY){
+        if (state == DIR_DIRTY)
+        {
           epicLog(LOG_DEBUG, "state == DIR_DIRTY");
         }
-        if(state == DIR_SHARED){
+        if (state == DIR_SHARED)
+        {
           epicLog(LOG_DEBUG, "state == DIR_SHARED");
         }
         list<GAddr> &shared = directory.GetSList(entry);
@@ -1177,7 +1194,6 @@ int Worker::ProcessLocalWrite_RC(WorkRequest *wr)
           epicAssert(i == start_blk);
           void *laddr = ToLocal(wr->addr);
           wr->gfunc(laddr, wr->arg);
-
         }
         else
         {

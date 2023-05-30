@@ -40,6 +40,17 @@ class WorkerHandle {
   inline void* GetLocal(GAddr addr) {
     return worker->ToLocal(addr);
   }
+  inline void* GetCacheLocal(GAddr addr) {
+    // epicAssert(IsLocal(addr) == false);
+    epicLog(LOG_DEBUG, "GetCacheLocal %lx", addr);
+    return worker->GetCacheLocal(addr);
+    
+  }
+  inline int FlushToHome(int workId, void *dest, void *src, int size)
+  {
+    return worker->FlushToHome(workId, dest, src, size);
+  }
+
 
   void ReportCacheStatistics();
   void ResetCacheStatistics();

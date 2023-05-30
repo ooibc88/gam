@@ -191,7 +191,10 @@ int Worker::ProcessLocalMalloc(WorkRequest *wr)
   {
     epicLog(LOG_PQ, "malloc a write_shared data at addr = %lx ,size = %d", wr->addr, wr->size);
   }
-  //}
+  if (Dstate == DataState::RC_WRITE_SHARED)
+  {
+    epicLog(LOG_DEBUG, "malloc a rc_write_shared data at addr = %lx ,size = %d", wr->addr, wr->size);
+  }
 
   epicLog(LOG_WARNING, "at least got to malloc");
   /* add ergeda add */
@@ -370,6 +373,21 @@ void Worker::CreateDir(WorkRequest *wr, DataState Cur_state, GAddr Owner)
 }
 /* add ergeda add */
 
+int Worker::ProcessLocalFlushToHome(WorkRequest *wr)
+{
+  // void *dest = malloc_wh->GetLocal(addr);
+  // void *src = wh[2]->GetCacheLocal(addr);
+  // 获取addr的home_node
+  int home_id= WID(wr->addr);
+  Client *home_client = GetClient(home_id);
+  void *dest = home_client->ToLocal(wr->addr);
+  void *src = GetCacheLocal(wr->addr);
+  int size = 4;
+  int workId=GetWorkerId();
+  FlushToHome(home_id, dest, src, size);
+  return SUCCESS;
+}
+
 int Worker::ProcessLocalRequest(WorkRequest *wr)
 {
   epicLog(
@@ -449,6 +467,10 @@ int Worker::ProcessLocalRequest(WorkRequest *wr)
   {
     ret = this->ProcessLocalHTable(wr);
 #endif
+  }
+  else if (flushToHomeOp == wr->op)
+  {
+    ret = ProcessLocalFlushToHome(wr);
   }
   else
   {

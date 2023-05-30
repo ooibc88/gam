@@ -265,6 +265,7 @@ public:
   void ProcessRemoteMalloc(Client *client, WorkRequest *wr);
   void ProcessRemoteMallocReply(Client *client, WorkRequest *wr);
   void ProcessRemoteGetReply(Client *client, WorkRequest *wr);
+  void LearnWriteWithImm(Client *client, WorkRequest *wr);
   void ProcessRemoteRead(Client *client, WorkRequest *wr);
   void ProcessRemoteReadCache(Client *client, WorkRequest *wr);
   void ProcessRemoteReadReply(Client *client, WorkRequest *wr);
@@ -315,7 +316,8 @@ public:
   void ProcessRemoteWeInv(Client *client, WorkRequest *wr);         // 从owner节点发给副本发送无效化指令
 
   void CreateDir(WorkRequest *wr, DataState Cur_state = DataState::MSI, GAddr Owner = 0); // 每次malloc在home_node上和owner_node都需要建立directory.
-  void CreateCache(WorkRequest *wr, DataState Dstate = DataState::MSI);                   // 每次状态转换，需要在owner_node上建立cache，除非home_node=owner_node
+  int ProcessLocalFlushToHome(WorkRequest *wr);
+  void CreateCache(WorkRequest *wr, DataState Dstate = DataState::MSI); // 每次状态转换，需要在owner_node上建立cache，除非home_node=owner_node
   // Code开头的函数都用于简化下代码，实在是太冗长了，还是得写成函数才好,代码放在local_request_cache.cc的最后吧
   void Code_invalidate(WorkRequest *wr, DirEntry *entry, GAddr blk);
 
@@ -333,6 +335,8 @@ public:
       return DataState::READ_ONLY;
     if (flag & Read_mostly)
       return DataState::READ_MOSTLY;
+    if (flag & RC_Write_shared) // 用来标记基于释放一致性的写共享策略
+      return DataState::RC_WRITE_SHARED;
     return DataState::MSI;
   }
   void Just_for_test(char *Func, WorkRequest *wr)
@@ -347,6 +351,20 @@ public:
 
   void ProcessRemoteWriteSharedRead(Client *client, WorkRequest *wr);
   void ProcessPendingWritesharedRead(Client *client, WorkRequest *wr);
+
+  void ProcessFlushToHome(Client *client, WorkRequest *wr);
+
+  int FlushToHome(int workId, void *dest, void *src, int size);
+
+  inline void *GetCacheLocal(GAddr addr)
+  {
+    int offset = addr % BLOCK_SIZE;
+    epicLog(LOG_DEBUG, "addr=%lx, offset=%d", addr, offset);
+    epicLog(LOG_DEBUG, "WorkerId=%d,TOBLOCK(addr)=%lx\n",GetWorkerId(), TOBLOCK(addr));
+    epicLog(LOG_DEBUG, "cache.GetLine(%lx)=%lx", TOBLOCK(addr), cache.GetLine(TOBLOCK(addr)));
+    return (void *)(cache.GetLine(TOBLOCK(addr)) + offset);
+  }
+
   /* add wpq add */
 
 #ifdef DHT
