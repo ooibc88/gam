@@ -160,6 +160,34 @@ void Worker::ProcessPendingRead(Client *cli, WorkRequest *wr)
   wr = nullptr;
 }
 
+void Worker::ProcessPendingInitAcquire(Client *cli, WorkRequest *wr)
+{
+  epicAssert(wr->parent);
+  WorkRequest *parent = wr->parent;
+  CacheLine *cline = nullptr;
+  DirEntry *entry = nullptr;
+  GAddr blk = TOBLOCK(wr->addr);
+  parent->lock();
+
+  epicAssert(!IsLocal(wr->addr));
+  cache.lock(blk);
+  cline = cache.GetCLine(wr->addr);
+  epicAssert(cline);
+  cache.unlock(blk);
+
+  if (--parent->counter == 0)
+  { // read all the data
+    parent->unlock();
+    Notify(parent);
+  }
+  else
+  {
+    parent->unlock();
+  }
+  delete wr;
+  wr = nullptr;
+}
+
 void Worker::ProcessPendingReadForward(Client *cli, WorkRequest *wr)
 {
 #ifdef SELECTIVE_CACHING
@@ -889,6 +917,11 @@ void Worker::ProcessPendingRequest(Client *cli, WorkRequest *wr)
   case completeFlush:
   {
     ProcessFlushToHome(cli, wr);
+    break;
+  }
+  case InitAcquire:
+  {
+    ProcessPendingInitAcquire(cli, wr);
     break;
   }
     /* add wpq add */

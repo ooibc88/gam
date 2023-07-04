@@ -375,17 +375,63 @@ void Worker::CreateDir(WorkRequest *wr, DataState Cur_state, GAddr Owner)
 
 int Worker::ProcessLocalFlushToHome(WorkRequest *wr)
 {
-  // void *dest = malloc_wh->GetLocal(addr);
-  // void *src = wh[2]->GetCacheLocal(addr);
   // 获取addr的home_node
-  int home_id= WID(wr->addr);
-  Client *home_client = GetClient(home_id);
-  void *dest = home_client->ToLocal(wr->addr);
+  int home_id = WID(wr->addr);
+  GAddr home_addr = EMPTY_GLOB(home_id);
+  Client *home_client = GetClient(home_addr);
+  void *dest = home_client->ToLocal_flush(wr->addr);
+  // void *dest = (void *)((wr->addr) & 0xFFFFFFFFFFFFL);
   void *src = GetCacheLocal(wr->addr);
   int size = 4;
-  int workId=GetWorkerId();
-  FlushToHome(home_id, dest, src, size);
+  int workId = GetWorkerId();
+  int id = wr->id;
+  epicLog(LOG_DEBUG, "workId = %d, home_id = %d, addr = %lx,dest = %lx, src = %lx, size = %d, id = %d", workId, home_id, wr->addr, dest, src, size, id);
+  // workid=2/3, homeid=1,
+  FlushToHome(home_id, dest, src, size, id);
+
   return SUCCESS;
+}
+
+int Worker::ProcessLocalInitAcquire(WorkRequest *wr)
+{
+  epicAssert(InitAcquire == wr->op);
+  int newcline = 0;
+  GAddr start_blk = TOBLOCK(wr->addr);
+  GAddr end = GADD(wr->addr, wr->size);
+  GAddr end_blk = TOBLOCK(end - 1);
+
+  Client *cli = GetClient(wr->addr);
+  GAddr start = wr->addr;
+
+  wr->lock();
+
+  for (GAddr i = start_blk; i < end;)
+  {
+    GAddr nextb = BADD(i, 1);
+    
+    cache.lock(i);
+    CacheLine *cline = nullptr;
+
+    WorkRequest *lwr = new WorkRequest(*wr);
+    newcline++;
+    cline = cache.SetCLine(i);
+
+    lwr->addr = i;
+    lwr->counter = 0;
+    lwr->size = BLOCK_SIZE;
+    lwr->ptr = cline->line;
+    lwr->parent = wr;
+    wr->counter++;
+
+    SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+
+    cache.unlock(i);
+    i = nextb;
+  }
+
+  wr->unlock();
+
+  return 1;
 }
 
 int Worker::ProcessLocalRequest(WorkRequest *wr)
@@ -471,6 +517,10 @@ int Worker::ProcessLocalRequest(WorkRequest *wr)
   else if (flushToHomeOp == wr->op)
   {
     ret = ProcessLocalFlushToHome(wr);
+  }
+  else if (InitAcquire == wr->op)
+  {
+    ret = ProcessLocalInitAcquire(wr);
   }
   else
   {

@@ -185,9 +185,61 @@ void dit_r2_fft(GAddr addr_xn, int n, int stride, GAddr addr_Xk, WorkerHandle *C
     Free_addr(Cur_wh, addr_X1k);
     Free_addr(Cur_wh, addr_X2k);
 }
-void Solve()
+
+void sub_fft2()
 {
 
+}
+void p_fft2(GAddr addr_input, int n, int stride, GAddr addr_output, WorkerHandle *Cur_wh)
+{
+    for (int i = 0; i < n; i++)
+    {
+        complex<float> temp1[N];
+        Read_val(Cur_wh, addr_input + i * sizeof(complex<float>), (int *)&temp1, sizeof(complex<float>) * N);
+        Write_val(Cur_wh, addr_output + i * sizeof(complex<float>), (int *)&temp1, sizeof(complex<float>) * N);
+    }
+    
+}
+
+void Solve2()
+{
+    malloc_wh = wh[0];
+
+    complex<float> value_input[N];
+
+    for (int i = 0; i < N; i++)
+    {
+        value_input[i] = 0.7 * sin(2 * PI * 50 * dt * i) + sin(2 * PI * 120 * dt * i);
+    }
+    GAddr addr_input = Malloc_addr(malloc_wh, sizeof(float) * N, Msi, 1);
+    for (int i = 0; i < N; i++)
+    {
+        Write_val(malloc_wh, addr_input + i * sizeof(float), (int *)&xn[i], sizeof(float));
+    }
+
+    GAddr addr_output = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Msi, 1);
+
+    int Iteration = iteration_times;
+    printf("Start\n");
+    long Start = get_time();
+    for (int round = 0; round < Iteration; ++round)
+    {
+        p_fft2(addr_input, N, 1, addr_output, malloc_wh);
+    }
+
+    // for(int i=0;i<N;i++)
+    // {
+    //     Read_val(wh[0], addr_Xk + i * sizeof(complex<float>), (int *)&Xk[i], sizeof(complex<float>));
+    //     printf("Xk[%d]=%f+%fi\n",i,Xk[i].real(),Xk[i].imag());
+    // }
+
+    long End = get_time();
+    printf("End\n");
+    printf("running time : %ld\n", End - Start);
+}
+
+void Solve()
+{
     malloc_wh = wh[0];
 
     sleep(1);
@@ -224,22 +276,6 @@ void Solve()
     printf("End\n");
     printf("running time : %ld\n", End - Start);
 }
-void preTest()
-{
-    malloc_wh = wh[0];
-    GAddr addr_m = Malloc_addr(malloc_wh, sizeof(float) * 2, Msi, 1);
-    for (int i = 0; i < 2; i++)
-    {
-        Write_val(malloc_wh, addr_m + i * sizeof(float), (int *)&xn[i], sizeof(float));
-    }
-    float m[2];
-    Read_val(malloc_wh, addr_m, (int *)&m[0], sizeof(float));
-    Read_val(malloc_wh, addr_m + sizeof(float), (int *)&m[1], sizeof(float));
-    printf("m[0]=%f\n", m[0]);
-    printf("m[1]=%f\n", m[1]);
-    Free_addr(malloc_wh, addr_m);
-   
-}
 
 int main(int argc, char *argv[])
 {
@@ -252,7 +288,6 @@ int main(int argc, char *argv[])
         Create_worker();
     }
 
-    // Solve();
-    preTest();
+    Solve();
     return 0;
 }

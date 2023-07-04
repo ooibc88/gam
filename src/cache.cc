@@ -10,7 +10,7 @@
 int Cache::ReadWrite(WorkRequest *wr)
 {
   epicLog(LOG_DEBUG, "op=%d, addr=%lx, size=%d", wr->op, wr->addr, wr->size);
-  epicLog(LOG_DEBUG, "wid=%d", wr->wid);
+  epicLog(LOG_DEBUG, "here wid=%d", wr->wid);
 #ifdef NOCACHE
   epicLog(LOG_WARNING, "shouldn't come here");
   return 0;
@@ -593,20 +593,23 @@ int Cache::ReadWrite(WorkRequest *wr)
         continue;
       }
     }
-    else if (Cur_Dstate == DataState::RC_WRITE_SHARED)
+    else if (Cur_Dstate == DataState::RC_WRITE_SHARED )
     {
       epicLog(LOG_DEBUG, "RC_WRITE_SHARED, GetWorkerId=%d\n", worker->GetWorkerId());
+
       int offset = wr->addr - TOBLOCK(wr->addr);
 
       CacheLine *cline = nullptr;
+      lock(i);
       if (cline = GetCLine(i))
       {
-        epicLog(LOG_DEBUG, "GetCLine SUCCESS,i=%lx\n",i);
+        epicLog(LOG_DEBUG, "GetCLine SUCCESS,i=%lx\n", i);
       }
       else
       {
-        epicLog(LOG_DEBUG, "GetCLine Failure,i=%lx\n",i);
         cline = SetCLine(i);
+        epicLog(LOG_DEBUG, "GetCLine Failure,i=%lx,cline->addr=%lx,cline->line=%lx\n,workid=%d",
+                i, cline->addr, cline->line, worker->GetWorkerId());
       }
 
       GAddr gs = i > start ? i : start;
@@ -615,25 +618,26 @@ int Cache::ReadWrite(WorkRequest *wr)
       void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
       int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
       if (wr->op == READ)
+      {
         memcpy(ls, cs, len);
+      }
+
       else if (wr->op == WRITE)
+      {
         memcpy(cs, ls, len);
+      }
 
-      epicLog(LOG_DEBUG,"wr->op=%d,offset=%d,cs= %lx, ls = %lx\n",
-                            wr->op,offset,cs,ls);
-
+      epicLog(LOG_DEBUG, "wr->op=%d,offset=%d,cs= %lx, ls = %lx\n",
+              wr->op, offset, cs, ls);
 
       unlock(i);
       i = nextb;
+      worker->AddToFlushList(wr->addr, wr->size);
       continue;
     }
     lock(i);
     CacheLine *cline = nullptr;
-#ifdef SELECTIVE_CACHING
-    if ((cline = GetCLine(i)) && cline->state != CACHE_NOT_CACHE)
-#else
     if ((cline = GetCLine(i)))
-#endif
     {
       CacheState state = cline->state;
       // FIXME: may violate the ordering guarantee of single thread
@@ -642,6 +646,7 @@ int Cache::ReadWrite(WorkRequest *wr)
       // it finished transmission
       if (state == CACHE_TO_INVALID && READ == wr->op)
       {
+        worker->no_cache_state_toinvalid_++;
         epicLog(LOG_INFO, "cache is going to be invalid, but still usable for read op = %d", wr->op);
         GAddr gs = i > start ? i : start;
         epicAssert(GMINUS(nextb, gs) > 0);
@@ -659,6 +664,7 @@ int Cache::ReadWrite(WorkRequest *wr)
       // it finished transmission
       if (state == CACHE_TO_DIRTY && READ == wr->op && IsBlockLocked(cline))
       {
+        worker->no_cache_state_todirty_++;
         epicAssert(!IsBlockWLocked(cline));
         epicLog(
             LOG_INFO, "cache is going from shared to dirty, but still usable for read op = %d", wr->op);
@@ -675,6 +681,19 @@ int Cache::ReadWrite(WorkRequest *wr)
 
       if (unlikely(InTransitionState(state)))
       {
+        worker->no_cache_state_InTransition_++;
+        if (state == CACHE_TO_DIRTY)
+        {
+          epicLog(LOG_DEBUG, "state = CACHE_TO_DIRTY");
+        }
+        else if (state == CACHE_TO_SHARED)
+        {
+          epicLog(LOG_DEBUG, "CACHE_TO_SHARED");
+        }
+        else if (state == CACHE_TO_INVALID)
+        {
+          epicLog(LOG_DEBUG, "state = CACHE_TO_INVALID");
+        }
         epicLog(LOG_INFO, "in transition state while cache read/write(%d)", wr->op);
         // we increase the counter in case
         // we false call Notify()
@@ -725,6 +744,7 @@ int Cache::ReadWrite(WorkRequest *wr)
 #endif
         if (state != CACHE_DIRTY)
         {
+          worker->no_cache_state_shared_++;
           epicAssert(state == CACHE_SHARED);
           //        we comment below deadlock handle since we add it the worker deadlock case 3
           //					/*
@@ -802,6 +822,7 @@ int Cache::ReadWrite(WorkRequest *wr)
         }
         else
         {
+          worker->no_cache_state_dirty_++;
 #ifdef GFUNC_SUPPORT
           if (wr->flag & GFUNC)
           {
@@ -836,6 +857,7 @@ int Cache::ReadWrite(WorkRequest *wr)
     }
     else
     {
+      worker->no_cache_miss_++;
       epicLog(LOG_DEBUG, "cache miss,optype = %d", wr->op);
       // worker->Just_for_test("cache invalid", wr);
       WorkRequest *lwr = new WorkRequest(*wr);

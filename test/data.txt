@@ -1,0 +1,124 @@
+Solve
+Start
+End
+running time : 1598869
+Solve
+Start
+End
+running time : 1603842
+Solve
+Start
+End
+running time : 1510296
+Solve
+Start
+End
+running time : 1714254
+Solve
+Start
+End
+running time : 1436117
+Solve2
+Start
+End
+running time : 1711277
+Solve2
+Start
+End
+running time : 1771026
+Solve2
+Start
+End
+running time : 1867995
+Solve2
+Start
+End
+running time : 1514182
+Solve2
+Start
+End
+running time : 1754558
+Solve
+Start
+End
+running time : 1825010
+Solve
+Start
+End
+running time : 1910991
+Solve
+Start
+End
+running time : 1801441
+Solve
+Start
+End
+running time : 1830728
+Solve
+Start
+End
+running time : 1924180
+Solve
+Start
+End
+running time : 8929961
+Solve
+Start
+End
+running time : 9005315
+Solve
+Start
+End
+running time : 8945942
+Solve
+Start
+End
+running time : 8939171
+Solve
+Start
+End
+running time : 9058768
+Solve2
+Start
+End
+running time : 5416998
+Solve2
+Start
+End
+running time : 5967333
+Solve2
+Start
+End
+running time : 5557056
+Solve2
+Start
+End
+running time : 6883814
+Solve2
+Start
+End
+running time : 6397201
+Solve2
+Start
+End
+running time : 5686070
+Solve
+Start
+End
+running time : 4136663
+Solve
+Start
+End
+running time : 3932490
+Solve
+Start
+End
+running time : 3952996
+Solve
+Start
+End
+running time : 4056737
+Solve
+Start
+End
+running time : 3995307

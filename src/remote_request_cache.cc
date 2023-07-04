@@ -3,7 +3,6 @@
 
 void Worker::LearnWriteWithImm(Client *client, WorkRequest *wr)
 {
-  
 }
 
 void Worker::ProcessRemoteRead(Client *client, WorkRequest *wr)
@@ -1453,6 +1452,19 @@ void Worker::ProcessRemoteWriteSharedRead(Client *client, WorkRequest *wr)
   client->WriteWithImm(wr->ptr, cline->line, wr->size, wr->id); // reply to the local home node
 
   cache.unlock(blk);
+  delete wr;
+  wr = nullptr;
+}
+
+void Worker::ProcessRemoteInitAcquire(Client *client, WorkRequest *wr)
+{
+  epicAssert(IsLocal(wr->addr));
+  epicAssert(BLOCK_ALIGNED(wr->addr) && wr->size == BLOCK_SIZE);
+
+  void *laddr = ToLocal(wr->addr);
+
+  client->WriteWithImm(wr->ptr, laddr, wr->size, wr->id);
+
   delete wr;
   wr = nullptr;
 }

@@ -1,0 +1,60 @@
+Solve
+Start
+End
+running time : 1598869
+Solve
+Start
+End
+running time : 1603842
+Solve
+Start
+End
+running time : 1510296
+Solve
+Start
+End
+running time : 1714254
+Solve
+Start
+End
+running time : 1436117
+Solve2
+Start
+End
+running time : 1711277
+Solve2
+Start
+End
+running time : 1771026
+Solve2
+Start
+End
+running time : 1867995
+Solve2
+Start
+End
+running time : 1514182
+Solve2
+Start
+End
+running time : 1754558
+Solve
+Start
+End
+running time : 1825010
+Solve
+Start
+End
+running time : 1910991
+Solve
+Start
+End
+running time : 1801441
+Solve
+Start
+End
+running time : 1830728
+Solve
+Start
+End
+running time : 1924180

@@ -188,6 +188,7 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
           i = nextb;
           continue;
         }
+        
         else if (Ds == WRITE_SHARED)
         {
           /* add wpq add*/
@@ -242,6 +243,7 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
           i = nextb;
           continue;
         }
+        
         else if (Ds == RC_WRITE_SHARED)
         {
           epicLog(LOG_DEBUG, "RC_WRITE_SHARED,wr->addr=%lx\n", wr->addr);
@@ -253,6 +255,7 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
 
           memcpy(ls, ToLocal(gs), len); // 直接复制就行
 
+          directory.unlock(laddr);
           i = nextb;
           continue;
         }
@@ -594,6 +597,7 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
           i = nextb;
           continue;
         }
+        
         else if (Ds == WRITE_SHARED)
         {
           /* add wpq add*/
@@ -674,6 +678,23 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
           }
 
           directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+        
+        else if (Ds == RC_WRITE_SHARED)
+        {
+
+          epicLog(LOG_DEBUG, "RC_WRITE_SHARED,wr->addr=%lx\n", wr->addr);
+
+          GAddr gs = i > start ? i : start;
+          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          epicLog(LOG_DEBUG, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
+
+          memcpy(ToLocal(gs), ls, len);
+          directory.unlock(laddr);
+
           i = nextb;
           continue;
         }
@@ -774,461 +795,14 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
   else
   {
     int ret = cache.Write(wr);
+    
     if (ret)
     {
       return REMOTE_REQUEST;
     }
 
     ++no_remote_writes_direct_hit_;
-  }
-#ifdef MULTITHREAD
-  if (wr->flag & ASYNC || wr->flag & TO_SERVE || wr->flag & FENCE)
-  {
-#endif
-    /*
-     * notify the app thread directly
-     * this can only happen when the request can be fulfilled locally
-     * or we don't need to wait for reply from remote node
-     */
-    if (Notify(wr))
-    {
-      epicLog(LOG_WARNING, "cannot wake up the app thread");
-    }
-#ifdef MULTITHREAD
-  }
-#endif
-  return SUCCESS;
-}
-
-int Worker::ProcessLocalWrite_RC(WorkRequest *wr)
-{
-  epicAssert(wr->addr);
-  Fence *fence = fences_.at(wr->fd);
-  if (!(wr->flag & FENCE))
-  {
-    fence->lock();
-    if (unlikely(IsFenced(fence, wr)))
-    {
-      epicLog(LOG_DEBUG, "fenced(mfenced = %d, sfenced = %d): %d",
-              fence->mfenced, fence->sfenced, wr->op);
-      AddToFence(fence, wr);
-      fence->unlock();
-      return FENCE_PENDING;
-    }
-    fence->unlock();
-  }
-  if ((wr->flag & ASYNC) && !(wr->flag & TO_SERVE))
-  {
-    fence->pending_writes++;
-    epicLog(LOG_DEBUG, "Local: one more pending write");
-  }
-  if (likely(IsLocal(wr->addr)))
-  {
-    GAddr start = wr->addr;
-    GAddr start_blk = TOBLOCK(start);
-    GAddr end = GADD(start, wr->size);
-    if (TOBLOCK(end - 1) != start_blk)
-    {
-      epicLog(LOG_INFO, "read/write split to multiple blocks");
-    }
-    wr->lock();
-    /*
-     * we increase it by 1 before we push to the to_serve_local_request queue
-     * so we have to decrease by 1 again
-     */
-    if (wr->flag & TO_SERVE)
-    {
-      wr->counter--;
-    }
-    for (GAddr i = start_blk; i < end;)
-    {
-      epicAssert(
-          !(wr->flag & COPY) || ((wr->flag & COPY) && (wr->flag & ASYNC)));
-
-      GAddr nextb = BADD(i, 1);
-      void *laddr = ToLocal(i);
-
-      directory.lock(laddr);
-      DirEntry *entry = directory.GetEntry(laddr);
-      DirState state = directory.GetState(entry);
-      if (unlikely(directory.InTransitionState(state)))
-      {
-        epicLog(LOG_INFO, "directory in transition state when local write %d",
-                state);
-        // we increase the counter in case
-        // we false call Notify()
-        wr->counter++;
-        wr->is_cache_hit_ = false;
-        if (wr->flag & ASYNC)
-        {
-          if (!wr->IsACopy())
-          {
-            wr->unlock();
-            wr = wr->Copy();
-            wr->lock();
-          }
-        }
-        AddToServeLocalRequest(i, wr);
-        directory.unlock(laddr);
-        wr->unlock();
-        return IN_TRANSITION;
-      }
-
-      /* add ergeda add */
-
-      DataState Ds = directory.GetDataState(entry);
-      GAddr Cur_owner = directory.GetOwner(entry);
-
-      if (Ds != MSI)
-      {
-        if (Ds == ACCESS_EXCLUSIVE)
-        {
-          if (WID(Cur_owner) == GetWorkerId())
-          { // owner == home_node, 直接在本地写
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            memcpy(ToLocal(gs), ls, len);
-          }
-
-          else
-          { // owner != home_node, send to owner_node，转发给owner_node去写。
-            WorkRequest *lwr = new WorkRequest(*wr);
-            lwr->counter = 0;
-            Client *cli = GetClient(Cur_owner);
-            GAddr gs = i > start ? i : start;
-            char buf[BLOCK_SIZE];
-
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));     // 要写入的数据，该缓存块对应的数据
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs); // 长度
-            memcpy(buf, ls, len);                                        //
-
-            lwr->op = JUST_WRITE;
-            lwr->addr = gs;
-            lwr->ptr = buf;
-            lwr->size = len;
-
-            if (wr->flag & ASYNC)
-            { // 防止异步造成栈上的wr丢失
-              if (!wr->IsACopy())
-              {
-                wr->unlock();
-                wr = wr->Copy();
-                wr->lock();
-              }
-            }
-
-            lwr->parent = wr;
-            lwr->counter = 0;
-            wr->counter++; // 存在一个远程请求没搞定
-            SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
-          }
-
-          directory.unlock(laddr);
-          i = nextb;
-          continue;
-        }
-
-        else if (Ds == READ_MOSTLY)
-        {
-          // Just_for_test("home_node RmWrite", wr);
-          // ProcessrmWrite();
-          entry->state = DIR_TO_SHARED; // 等待副本都无效
-
-          GAddr gs = i > start ? i : start;
-          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-          memcpy(ToLocal(gs), ls, len); // 在这里就memcpy一定是对的吗？
-
-          list<GAddr> &shared = directory.GetSList(entry);
-          if (shared.size())
-          {
-
-            if (wr->flag & ASYNC)
-            { // 防止异步造成栈上的wr丢失
-              if (!wr->IsACopy())
-              {
-                wr->unlock();
-                wr = wr->Copy();
-                wr->lock();
-              }
-            }
-
-            WorkRequest *lwr = new WorkRequest(*wr);
-            lwr->lock();
-            lwr->counter = 0;
-            lwr->op = RM_FORWARD;
-            lwr->addr = i;
-            lwr->parent = wr;
-
-            lwr->id = GetWorkPsn();
-
-            lwr->counter = shared.size();
-            wr->counter++;
-
-            bool first = true;
-            for (auto it = shared.begin(); it != shared.end(); it++)
-            {
-              Client *cli = GetClient(*it);
-              if (first)
-              {
-                AddToPending(lwr->id, lwr);
-                first = false;
-              }
-              SubmitRequest(cli, lwr);
-            }
-            lwr->unlock();
-          }
-          else
-          {
-            entry->state = DIR_SHARED;
-          }
-
-          directory.unlock(laddr);
-          i = nextb;
-          continue;
-        }
-
-        else if (Ds == WRITE_EXCLUSIVE)
-        {
-          if (WID(Cur_owner) == GetWorkerId())
-          { // home_node = owner_node, 本地写
-
-            // entry->state = DIR_TO_SHARED; //等待副本都无效,这底下和read_mostly几乎一致，可以合并到同一个函数。。
-
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            memcpy(ToLocal(gs), ls, len); // 在这里就memcpy一定是对的吗？异步情况下，似乎不对。
-
-            if (wr->flag & ASYNC)
-            { // 防止异步造成栈上的wr丢失
-              if (!wr->IsACopy())
-              {
-                wr->unlock();
-                wr = wr->Copy();
-                wr->lock();
-              }
-            }
-
-            Code_invalidate(wr, entry, i);
-          }
-
-          else
-          { // home_node != owner_node
-            WorkRequest *lwr = new WorkRequest(*wr);
-            lwr->counter = 0;
-            Client *cli = GetClient(Cur_owner);
-            GAddr gs = i > start ? i : start;
-            char buf[BLOCK_SIZE];
-
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));     // 要写入的数据，该缓存块对应的数据
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs); // 长度
-            memcpy(buf, ls, len);
-
-            lwr->op = WE_WRITE; // 基本同JUST_WRITE;
-            lwr->addr = gs;
-            lwr->ptr = buf;
-            lwr->size = len;
-
-            if (wr->flag & ASYNC)
-            { // 防止异步造成栈上的wr丢失
-              if (!wr->IsACopy())
-              {
-                wr->unlock();
-                wr = wr->Copy();
-                wr->lock();
-              }
-            }
-
-            lwr->parent = wr;
-            lwr->counter = 0;
-            wr->counter++; // 存在一个远程请求没搞定
-            SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
-          }
-
-          directory.unlock(laddr);
-          i = nextb;
-          continue;
-        }
-        else if (Ds == WRITE_SHARED)
-        {
-          /* add wpq add*/
-          int subblock_num = directory.GetSubBlockNum(entry, wr->addr);
-
-          int subblock_owner = directory.GetSubBlockOwner(entry, subblock_num);
-          GAddr subblock_addr = directory.GetSubBlockAddr(entry, subblock_owner);
-
-          /* add wpq add */
-          int offset = wr->addr - TOBLOCK(wr->addr);
-          epicLog(LOG_PQ, "Ds = %d, offset = %d,subblock_num(0 start) = %d, subblock_owner(1 start) = %d",
-                  Ds, offset, subblock_num, subblock_owner);
-          epicLog(LOG_PQ, "3 wr->addr=%lx,start=%lx", wr->addr, start);
-
-          if (subblock_owner == GetWorkerId())
-          {
-            epicLog(LOG_PQ, "subblock_owner == GetWorkerId()");
-            if (i < start)
-            {
-              epicLog(LOG_PQ, "i<start");
-            }
-            if (nextb > end)
-            {
-              epicLog(LOG_PQ, "nextb>end");
-            }
-
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            epicLog(LOG_PQ, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
-
-            memcpy(ToLocal(gs), ls, len);
-          }
-          else
-          {
-            epicLog(LOG_PQ, "subblock_owner != GetWorkerId()");
-            WorkRequest *lwr = new WorkRequest(*wr);
-            lwr->counter = 0;
-            Client *sub_owner_client = GetClient(subblock_addr);
-            lwr->addr = i;
-            lwr->size = BLOCK_SIZE;
-
-            if (wr->flag & ASYNC)
-            {
-              if (!wr->IsACopy())
-              {
-                wr->unlock();
-                wr = wr->Copy();
-                wr->lock();
-              }
-            }
-            lwr->parent = wr;
-            DirEntry *Entry = directory.GetEntry((void *)i);
-            Entry->ownerlist_subblock[subblock_num] = GetWorkerId();
-            int ownerNumber = Entry->ownerNumber;
-            epicLog(LOG_PQ, "ownerNumber = %d", ownerNumber);
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            epicLog(LOG_PQ, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
-
-            memcpy(ls, ToLocal(gs), len);
-
-            lwr->op = ChangeSubLog;
-            lwr->flagSub1 = subblock_num;
-            lwr->flagSub2 = GetWorkerId();
-            int temp1 = 0;
-            for (temp1 = 1; temp1 <= ownerNumber; temp1++)
-            {
-              if (temp1 == GetWorkerId())
-                continue;
-              GAddr client_addr =
-                  directory.GetSubBlockAddr(Entry, temp1);
-              Client *client = GetClient(client_addr);
-              SubmitRequest(client, lwr,
-                            ADD_TO_PENDING | REQUEST_SEND);
-            }
-          }
-
-          directory.unlock(laddr);
-          i = nextb;
-          continue;
-        }
-      }
-      /* add ergeda add */
-
-      /*
-       * since we cannot guarantee that generating a completion indicates
-       * the buf in the remote node has been updated (only means remote HCA received and acked)
-       * (ref: http://lists.openfabrics.org/pipermail/general/2007-May/036615.html)
-       * so we use Request/Reply mode even for DIR_SHARED invalidations
-       * instead of direct WRITE or CAS to invalidate the corresponding cache line in remote node
-       */
-      if (state == DIR_DIRTY || state == DIR_SHARED)
-      {
-        list<GAddr> &shared = directory.GetSList(entry);
-        WorkRequest *lwr = new WorkRequest(*wr);
-        lwr->counter = 0;
-        lwr->op = state == DIR_DIRTY ? FETCH_AND_INVALIDATE : INVALIDATE;
-        lwr->addr = i;
-        lwr->size = BLOCK_SIZE;
-        lwr->ptr = laddr;
-        wr->is_cache_hit_ = false;
-        if (wr->flag & ASYNC)
-        {
-          if (!wr->IsACopy())
-          {
-            wr->unlock();
-            wr = wr->Copy();
-            wr->lock();
-          }
-        }
-        lwr->parent = wr;
-        lwr->id = GetWorkPsn();
-        lwr->counter = shared.size();
-        wr->counter++;
-        epicAssert(state != DIR_TO_UNSHARED);
-        epicAssert(
-            (state == DIR_DIRTY && !directory.IsBlockLocked(entry)) || (state == DIR_SHARED && !directory.IsBlockWLocked(entry)));
-        directory.ToToUnShared(entry);
-        // we move AddToPending before submit request
-        // since it is possible that the reply comes back before we add to the pending list
-        // if we AddToPending at last
-        AddToPending(lwr->id, lwr);
-        for (auto it = shared.begin(); it != shared.end(); it++)
-        {
-          Client *cli = GetClient(*it);
-          epicLog(LOG_DEBUG, "invalidate (%d) cache from worker %d (lwr = %lx)",
-                  lwr->op, cli->GetWorkerId(), lwr);
-          SubmitRequest(cli, lwr);
-          // lwr->counter++;
-        }
-      }
-      else
-      {
-#ifdef GFUNC_SUPPORT
-        if (wr->flag & GFUNC)
-        {
-          epicAssert(wr->gfunc);
-          epicAssert(TOBLOCK(wr->addr) == TOBLOCK(GADD(wr->addr, wr->size - 1)));
-          epicAssert(i == start_blk);
-          void *laddr = ToLocal(wr->addr);
-          wr->gfunc(laddr, wr->arg);
-        }
-        else
-        {
-#endif
-          GAddr gs = i > start ? i : start;
-          void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-          memcpy(ToLocal(gs), ls, len);
-          epicLog(LOG_DEBUG, "copy dirty data in advance");
-#ifdef GFUNC_SUPPORT
-        }
-#endif
-      }
-      directory.unlock(laddr);
-      i = nextb;
-    }
-    if (wr->counter)
-    {
-      wr->unlock();
-      return REMOTE_REQUEST;
-    }
-    else
-    {
-      wr->unlock();
-    }
-  }
-  else
-  {
-    int ret = cache.Write(wr);
-    if (ret)
-    {
-      return REMOTE_REQUEST;
-    }
-
-    ++no_remote_writes_direct_hit_;
+    epicLog(LOG_DEBUG, "++no_remote_writes_direct_hit_", no_remote_writes_direct_hit_.load());
   }
 #ifdef MULTITHREAD
   if (wr->flag & ASYNC || wr->flag & TO_SERVE || wr->flag & FENCE)

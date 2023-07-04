@@ -21,31 +21,28 @@
 
 using namespace std;
 #define PI acos(-1)
-#define N 64       // FFT点数
+#define N 64    // FFT点数
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
 float xn[N];       // 采样信号序列
+float Xk[N];
 
-WorkerHandle *wh[10];
+#define parrallel_num 2
+WorkerHandle *wh[parrallel_num + 1];
 ibv_device **curlist;
-Worker *worker[10];
+Worker *worker[parrallel_num + 1];
 Master *master;
 int num_worker = 0;
-int num_threads = 4;
 int iteration_times = 0;
+int sub_iteration_times = 10;
 WorkerHandle *malloc_wh;
-int parrallel_num = 2;
-
-vector<pair<GAddr, int>> lock_list1;
-vector<pair<GAddr, int>> lock_list2;
-// map存储Workhandle到lock_list
 
 void Create_master()
 {
     Conf *conf = new Conf();
     // conf->master_port=12345;
-    conf->loglevel = LOG_DEBUG;
-    // conf->loglevel = LOG_TEST;
+    // conf->loglevel = LOG_DEBUG;
+    conf->loglevel = LOG_TEST;
     GAllocFactory::SetConf(conf);
     master = new Master(*conf);
 }
@@ -79,19 +76,17 @@ void Read_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
 void Write_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
 {
     WorkRequest wr{};
-    for (int i = 0; i < 1; i++)
+
+    wr.Reset();
+    wr.op = WRITE;
+    wr.wid = Cur_wh->GetWorkerId();
+    // wr.flag = ASYNC; // 可以在这里调
+    wr.size = size;
+    wr.addr = addr;
+    wr.ptr = (void *)val;
+    if (Cur_wh->SendRequest(&wr))
     {
-        wr.Reset();
-        wr.op = WRITE;
-        wr.wid = Cur_wh->GetWorkerId();
-        // wr.flag = ASYNC; // 可以在这里调
-        wr.size = size;
-        wr.addr = addr;
-        wr.ptr = (void *)val;
-        if (Cur_wh->SendRequest(&wr))
-        {
-            epicLog(LOG_WARNING, "send request failed");
-        }
+        epicLog(LOG_WARNING, "send request failed");
     }
 }
 
@@ -132,132 +127,127 @@ void Free_addr(WorkerHandle *Cur_wh, GAddr addr)
     }
 }
 
-void parrWrite1(WorkerHandle *Cur_wh, GAddr addr_xn, float *xn)
+void parrWrite(WorkerHandle *Cur_wh, GAddr addr_xn, float *xn, int start_index, int stride)
 {
-    for (int i = 0; i < N; i += 2)
+    for (int j = 0; j < sub_iteration_times; ++j)
     {
-        Write_val(Cur_wh, addr_xn + i * sizeof(float), (int *)&xn[i], sizeof(float));
-        // addr_xn + i * sizeof(float),sizeof(float)是一对值，需要添加到lock_list1
-        lock_list1.push_back({addr_xn + i * sizeof(float), sizeof(float)});
-    }
-}
-
-void parrWrite2(WorkerHandle *Cur_wh, GAddr addr_xn, float *xn)
-{
-    for (int i = 1; i < N; i += 2)
-    {
-        Write_val(Cur_wh, addr_xn + i * sizeof(float), (int *)&xn[i], sizeof(float));
-        lock_list1.push_back({addr_xn + i * sizeof(float), sizeof(float)});
-    }
-}
-
-int acquireLock(WorkerHandle *Cur_wh, GAddr addr, int size)
-{
-    printf("acquireLock\n");
-
-    return 0;
-}
-void flushToHome(WorkerHandle *Cur_wh, GAddr addr, int size)
-{
-    WorkRequest wr{};
-    wr.op = flushToHomeOp;
-    wr.wid = Cur_wh->GetWorkerId();
-    wr.flag = size;
-    wr.addr = addr;
-    if (Cur_wh->SendRequest(&wr))
-    {
-        epicLog(LOG_WARNING, "send request failed");
-    }
-}
-int releaseLock(WorkerHandle *Cur_wh, GAddr addr)
-{
-    if (Cur_wh == wh[1])
-    {
-        // 遍历lock_list1
-        for (int i = 0; i < lock_list1.size(); i++)
+        for (int i = start_index; i < N; i += stride)
         {
-            GAddr addr = lock_list1[i].first;
-            int size = lock_list1[i].second;
-            // void *dest = malloc_wh->GetLocal(addr);
-            // void *src = wh[1]->GetCacheLocal(addr);
-            // printf("dest = %x, src = %x, addr = %x,size = %d\n", dest, src, addr, size);
-            // wh[0]->FlushToHome(1, dest, src, size);
-            flushToHome(wh[1], addr, size);
+            Write_val(Cur_wh, addr_xn + i * sizeof(float), (int *)&xn[i], sizeof(float));
         }
     }
-    if (Cur_wh == wh[2])
-    {
-        for (int i = 0; i < lock_list1.size(); i++)
-        {
-            GAddr addr = lock_list1[i].first;
-            int size = lock_list1[i].second;
-            // void *dest = malloc_wh->GetLocal(addr);
-            // void *src = wh[2]->GetCacheLocal(addr);
-            // printf("dest = %x, src = %x, addr = %x,size = %d\n", dest, src, addr, size);
-            // wh[2]->FlushToHome(1, dest, src, size);
-            flushToHome(wh[2], addr, size);
-        }
-    }
-    return 0;
 }
 
-void Solve()
+void init_1()
 {
     Create_master();
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < parrallel_num + 1; ++i)
     {
         Create_worker();
     }
     malloc_wh = wh[0];
 
     sleep(1);
-
-    float Xk[N];
-
     for (int i = 0; i < N; i++)
     {
-        // xn[i] = 0.7 * sin(2 * PI * 50 * dt * i) + sin(2 * PI * 120 * dt * i);
         xn[i] = rand() % 100;
     }
+}
+
+void Solve()
+{
+    // printf("Solve\n");
+
     GAddr addr_xn = Malloc_addr(malloc_wh, sizeof(float) * N, RC_Write_shared, 1);
-    // GAddr addr_xn = Malloc_addr(malloc_wh, sizeof(float) * N, Msi, 1);
 
     int Iteration = iteration_times;
-    printf("Start\n");
     long Start = get_time();
-    acquireLock(wh[1], addr_xn, N * sizeof(float));
-    acquireLock(wh[2], addr_xn, N * sizeof(float));
+
+    for (int i = 0; i < parrallel_num; i++)
+    {
+        wh[i + 1]->acquireLock(addr_xn, sizeof(float) * N);
+    }
+    thread t[parrallel_num];
+
     for (int round = 0; round < Iteration; ++round)
     {
-        thread t1(parrWrite1, wh[1], addr_xn, xn);
-        thread t2(parrWrite2, wh[2], addr_xn, xn);
-        t1.join();
-        t2.join();
+        for (int i = 0; i < parrallel_num; i++)
+        {
+            t[i] = thread(parrWrite, wh[i + 1], addr_xn, xn, i, parrallel_num);
+        }
+        for (int i = 0; i < parrallel_num; i++)
+        {
+            t[i].join();
+        }
     }
 
-    releaseLock(wh[1], addr_xn);
-    releaseLock(wh[2], addr_xn);
-    epicLog(LOG_DEBUG, "releaseLock complete\n");
+    long Mid = get_time();
+    printf("%ld\n", Mid - Start);
 
+    for (int i = 0; i < parrallel_num; i++)
+    {
+        wh[i + 1]->releaseLock(addr_xn);
+    }
+
+    Read_val(wh[0], addr_xn, (int *)Xk, sizeof(float) * N);
     // for (int i = 0; i < N; i++)
     // {
-    //     Read_val(wh[0], addr_xn + i * sizeof(float), (int *)&Xk[i], sizeof(float));
+    //     printf("Xk[%d] = %f, xn[%d] = %f\n", i, Xk[i], i, xn[i]);
     // }
-    // 判断xn和xk是否相等
-    for (int i = 0; i < N; i++)
-    {
-        printf("xn=%f, Xk=%f\n", xn[i], Xk[i]);
-    }
 
     long End = get_time();
-    printf("End\n");
-    printf("running time : %ld\n", End - Start);
+    printf("%ld\n", End - Start);
+
+    // for (int i = 0; i < parrallel_num; i++)
+    // {
+    //     wh[i + 1]->ReportCacheStatistics();
+    //     wh[i + 1]->ResetCacheStatistics();
+    // }
 }
+
+void Solve2()
+{
+    // printf("Solve2\n");
+
+    GAddr addr_xn = Malloc_addr(malloc_wh, sizeof(float) * N, Msi, 1);
+
+    int Iteration = iteration_times;
+    long Start = get_time();
+    thread t[parrallel_num];
+
+    for (int round = 0; round < Iteration; ++round)
+    {
+        for (int i = 0; i < parrallel_num; i++)
+        {
+            t[i] = thread(parrWrite, wh[i + 1], addr_xn, xn, i, parrallel_num);
+        }
+        for (int i = 0; i < parrallel_num; i++)
+        {
+            t[i].join();
+        }
+    }
+    Read_val(wh[0], addr_xn, (int *)Xk, sizeof(float) * N);
+    // for (int i = 0; i < N; i++)
+    // {
+    //     printf("Xk[%d] = %f, xn[%d] = %f\n", i, Xk[i], i, xn[i]);
+    // }
+
+    long End = get_time();
+    printf("%ld\n", End - Start);
+
+    // for (int i = 0; i < parrallel_num; i++)
+    // {
+    //     wh[i + 1]->ReportCacheStatistics();
+    //     wh[i + 1]->ResetCacheStatistics();
+    // }
+}
+
 int main(int argc, char *argv[])
 {
     iteration_times = atoi(argv[1]);
     srand(time(NULL));
     curlist = ibv_get_device_list(NULL);
+    init_1();
 
     Solve();
     return 0;

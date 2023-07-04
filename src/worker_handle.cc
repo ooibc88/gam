@@ -1,5 +1,4 @@
-// Copyright (c) 2018 The GAM Authors 
-
+// Copyright (c) 2018 The GAM Authors
 
 #include <cstring>
 #include "worker_handle.h"
@@ -10,13 +9,14 @@
 
 LockWrapper WorkerHandle::lock;
 
-WorkerHandle::WorkerHandle(Worker* w)
+WorkerHandle::WorkerHandle(Worker *w)
     : worker(w),
-      wqueue(w->GetWorkQ()) {
-//#if !defined(USE_PIPE_W_TO_H) || (!defined(USE_BOOST_QUEUE) && !defined(USE_PIPE_H_TO_W))
+      wqueue(w->GetWorkQ())
+{
+// #if !defined(USE_PIPE_W_TO_H) || (!defined(USE_BOOST_QUEUE) && !defined(USE_PIPE_H_TO_W))
 #if !(defined(USE_PIPE_W_TO_H) && defined(USE_PIPE_H_TO_W))
   int notify_buf_size = sizeof(WorkRequest) + sizeof(int);
-  int ret = posix_memalign((void**) &notify_buf, HARDWARE_CACHE_LINE,
+  int ret = posix_memalign((void **)&notify_buf, HARDWARE_CACHE_LINE,
                            notify_buf_size);
   epicAssert((uint64_t)notify_buf % HARDWARE_CACHE_LINE == 0 && !ret);
   *notify_buf = 2;
@@ -29,21 +29,25 @@ WorkerHandle::WorkerHandle(Worker* w)
   RegisterThread();
 }
 
-WorkerHandle::~WorkerHandle() {
+WorkerHandle::~WorkerHandle()
+{
   DeRegisterThread();
 #if !defined(USE_PIPE_W_TO_H) || (!defined(USE_BOOST_QUEUE) && !defined(USE_PIPE_H_TO_W))
-  free((void*) notify_buf);
+  free((void *)notify_buf);
 #endif
 #ifdef USE_PTHREAD_COND
   pthread_mutex_unlock(&cond_lock);
 #endif
 }
 
-void WorkerHandle::RegisterThread() {
-  if (pipe(send_pipe)) {
+void WorkerHandle::RegisterThread()
+{
+  if (pipe(send_pipe))
+  {
     epicLog(LOG_WARNING, "create send pipe failed");
   }
-  if (pipe(recv_pipe)) {
+  if (pipe(recv_pipe))
+  {
     epicLog(LOG_WARNING, "create recv pipe failed");
   }
   worker->RegisterFence(recv_pipe[1]);
@@ -55,54 +59,68 @@ void WorkerHandle::RegisterThread() {
 #endif
 }
 
-void WorkerHandle::DeRegisterThread() {
+void WorkerHandle::DeRegisterThread()
+{
 #if defined(USE_PIPE_W_TO_H) || defined(USE_PIPE_H_TO_W)
   worker->DeRegisterHandle(send_pipe[0]);
 #endif
 #ifndef USE_BOOST_QUEUE
   worker->DeRegisterNotifyBuf(notify_buf);
 #endif
-  if (close(send_pipe[0])) {
+  if (close(send_pipe[0]))
+  {
     epicLog(LOG_WARNING, "close send_pipe[0] (%d) failed: %s (%d)",
             send_pipe[0], strerror(errno), errno);
   }
-  if (close(send_pipe[1])) {
+  if (close(send_pipe[1]))
+  {
     epicLog(LOG_WARNING, "close send_pipe[1] (%d) failed: %s (%d)",
             send_pipe[1], strerror(errno), errno);
   }
-  if (close(recv_pipe[0])) {
+  if (close(recv_pipe[0]))
+  {
     epicLog(LOG_WARNING, "close recv_pipe[0] (%d) failed: %s (%d)",
             recv_pipe[0], strerror(errno), errno);
   }
-  if (close(recv_pipe[1])) {
+  if (close(recv_pipe[1]))
+  {
     epicLog(LOG_WARNING, "close recv_pipe[1] (%d) failed: %s (%d)",
             recv_pipe[1], strerror(errno), errno);
   }
 }
 
-int WorkerHandle::SendRequest(WorkRequest* wr) {
+int WorkerHandle::SendRequest(WorkRequest *wr)
+{
   wr->flag |= LOCAL_REQUEST;
 #ifdef MULTITHREAD
-  *notify_buf = 1;  //not useful to set it to 1 if boost_queue is enabled
-  epicAssert(*(int* )notify_buf == 1);
-  wr->fd = recv_pipe[1];  //for legacy code
+  *notify_buf = 1; // not useful to set it to 1 if boost_queue is enabled
+  epicAssert(*(int *)notify_buf == 1);
+  wr->fd = recv_pipe[1]; // for legacy code
   wr->notify_buf = this->notify_buf;
   epicLog(LOG_DEBUG,
-      "workid = %d, wr->notify_buf = %d, wr->op = %d, wr->flag = %d, wr->status = %d, wr->addr = %lx, wr->size = %d, wr->fd = %d",
-      worker->GetWorkerId(), *wr->notify_buf, wr->op, wr->flag, wr->status,
-      wr->addr, wr->size, wr->fd);
-  int ret = worker->ProcessLocalRequest(wr);  //not complete due to remote or previously-sent similar requests
-  if (ret) {  //not complete due to remote or previously-sent similar requests
-    if (wr->flag & ASYNC) {
+          "workid = %d, wr->notify_buf = %d, wr->op = %d, wr->flag = %d, wr->status = %d, wr->addr = %lx, wr->size = %d, wr->fd = %d",
+          worker->GetWorkerId(), *wr->notify_buf, wr->op, wr->flag, wr->status,
+          wr->addr, wr->size, wr->fd);
+  int ret = worker->ProcessLocalRequest(wr); // not complete due to remote or previously-sent similar requests
+  if (ret)
+  { // not complete due to remote or previously-sent similar requests
+    if (wr->flag & ASYNC)
+    {
       return SUCCESS;
-    } else {
+    }
+    else
+    {
 #ifdef USE_PIPE_W_TO_H
       char buf[1];
-      if(1 != read(recv_pipe[0], buf, 1)) {  //blocking
+      if (1 != read(recv_pipe[0], buf, 1))
+      { // blocking
         epicLog(LOG_WARNING, "read notification from worker failed");
-      } else {
+      }
+      else
+      {
         epicLog(LOG_DEBUG, "request returned %c", buf[0]);
-        if(wr->status) {
+        if (wr->status)
+        {
           epicLog(LOG_INFO, "request failed %d\n", wr->status);
         }
       }
@@ -110,22 +128,26 @@ int WorkerHandle::SendRequest(WorkRequest* wr) {
       int ret = pthread_cond_wait(&cond, &cond_lock);
       epicAssert(!ret);
 #else
-      while (*notify_buf != 2);
+      while (*notify_buf != 2)
+        ;
       epicLog(LOG_DEBUG, "get notified via buf");
 #endif
       return wr->status;
     }
-  } else {
+  }
+  else
+  {
     return wr->status;
   }
-#else //if not MULTITHREAD
+#else // if not MULTITHREAD
 
-  WorkRequest* to = wr;
+  WorkRequest *to = wr;
   char buf[1];
   buf[0] = 's';
 
-  if(wr->flag & ASYNC) {  //if the work request is asynchronous, we return immediately
-    //copy the workrequest
+  if (wr->flag & ASYNC)
+  { // if the work request is asynchronous, we return immediately
+    // copy the workrequest
     to = wr->Copy();
   }
 
@@ -139,28 +161,29 @@ int WorkerHandle::SendRequest(WorkRequest* wr) {
   wqueue->push(to);
 #else
 #ifdef USE_BOOST_QUEUE
-  *notify_buf = 1;  //not useful to set it to 1 if boost_queue is enabled
-  epicAssert(*(int*)notify_buf == 1);
-  to->fd = recv_pipe[1];//for legacy code
+  *notify_buf = 1; // not useful to set it to 1 if boost_queue is enabled
+  epicAssert(*(int *)notify_buf == 1);
+  to->fd = recv_pipe[1]; // for legacy code
   to->notify_buf = this->notify_buf;
   wqueue->push(to);
 #elif defined(USE_BUF_ONLY)
-  *(WorkRequest**)(notify_buf+1) = to;
-  to->fd = recv_pipe[1];  //for legacy code
+  *(WorkRequest **)(notify_buf + 1) = to;
+  to->fd = recv_pipe[1]; // for legacy code
   to->notify_buf = this->notify_buf;
-  *notify_buf = 1;//put last since it will trigger the process
+  *notify_buf = 1; // put last since it will trigger the process
 #else
-  *notify_buf = 1;  //put first since notify_buf = 1 may happen after notify_buf = 2 by worker
-  epicAssert(*(int*)notify_buf == 1);
-  to->fd = recv_pipe[1];//for legacy code
+  *notify_buf = 1; // put first since notify_buf = 1 may happen after notify_buf = 2 by worker
+  epicAssert(*(int *)notify_buf == 1);
+  to->fd = recv_pipe[1]; // for legacy code
   to->notify_buf = this->notify_buf;
   wqueue->push(to);
 #endif
 #endif
 
-#ifndef USE_BUF_ONLY //otherwise, we have to return after the worker copy the data from notify_buf
-  //we return directly without writing to the pipe to notify the worker thread
-  if(to->flag & ASYNC) {
+#ifndef USE_BUF_ONLY // otherwise, we have to return after the worker copy the data from notify_buf
+  // we return directly without writing to the pipe to notify the worker thread
+  if (to->flag & ASYNC)
+  {
     epicLog(LOG_DEBUG, "asynchronous request");
     return SUCCESS;
   }
@@ -168,17 +191,20 @@ int WorkerHandle::SendRequest(WorkRequest* wr) {
 
 #ifdef USE_PIPE_H_TO_W
 #ifdef WH_USE_LOCK
-  if(lock.try_lock()) {
+  if (lock.try_lock())
+  {
 #endif
-    if (1 != write(send_pipe[1], buf, 1)) {
+    if (1 != write(send_pipe[1], buf, 1))
+    {
       epicLog(LOG_WARNING, "write to pipe failed (%d:%s)", errno,
-          strerror(errno));
+              strerror(errno));
     }
 
-    //we write twice in order to reduce the epoll latency
-    if (1 != write(send_pipe[1], buf, 1)) {
+    // we write twice in order to reduce the epoll latency
+    if (1 != write(send_pipe[1], buf, 1))
+    {
       epicLog(LOG_WARNING, "write to pipe failed (%d:%s)", errno,
-          strerror(errno));
+              strerror(errno));
     }
 
 #ifdef WH_USE_LOCK
@@ -188,11 +214,15 @@ int WorkerHandle::SendRequest(WorkRequest* wr) {
 #endif
 
 #ifdef USE_PIPE_W_TO_H
-  if(1 != read(recv_pipe[0], buf, 1)) {  //blocking
+  if (1 != read(recv_pipe[0], buf, 1))
+  { // blocking
     epicLog(LOG_WARNING, "read notification from worker failed");
-  } else {
+  }
+  else
+  {
     epicLog(LOG_DEBUG, "request returned %c", buf[0]);
-    if(wr->status) {
+    if (wr->status)
+    {
       epicLog(LOG_INFO, "request failed %d\n", wr->status);
     }
   }
@@ -200,31 +230,50 @@ int WorkerHandle::SendRequest(WorkRequest* wr) {
   int ret = pthread_cond_wait(&cond, &cond_lock);
   epicAssert(!ret);
 #else
-  while(*notify_buf != 2);
-//while(atomic_read(notify_buf) != 2);
+  while (*notify_buf != 2)
+    ;
+  // while(atomic_read(notify_buf) != 2);
   epicLog(LOG_DEBUG, "get notified via buf");
 #endif
   return wr->status;
 
-#endif //MULTITHREAD end
+#endif // MULTITHREAD end
 }
 
-void WorkerHandle::ReportCacheStatistics() {
-    epicLog(LOG_WARNING, "Cache Statistics");
-    fprintf(stdout, "lread lrhit lwrite lwhit rread rrhit rwrite rwhit\n");
-    fprintf(stdout, "%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n"
-                       , worker->no_local_reads_.load()
-                       , worker->no_local_reads_hit_.load()
-                       , worker->no_local_writes_.load()
-                       , worker->no_local_writes_hit_.load()
-                       , worker->no_remote_reads_.load()
-                       , worker->no_remote_reads_hit_.load()
-                       , worker->no_remote_writes_.load()
-                       , worker->no_remote_writes_hit_.load()
-                       , worker->no_remote_writes_direct_hit_.load());
+void WorkerHandle::ReportCacheStatistics()
+{
+  // fprintf(stdout, "lread lrhit lwrite lwhit rread rrhit rwrite rwhit rwdhit\n");
+  // fprintf(stdout, "%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n"
+  //                    , worker->no_local_reads_.load()
+  //                    , worker->no_local_reads_hit_.load()
+  //                    , worker->no_local_writes_.load()
+  //                    , worker->no_local_writes_hit_.load()
+  //                    , worker->no_remote_reads_.load()
+  //                    , worker->no_remote_reads_hit_.load()
+  //                    , worker->no_remote_writes_.load()
+  //                    , worker->no_remote_writes_hit_.load()
+  //                    , worker->no_remote_writes_direct_hit_.load());
+
+  // printf("Cache Statistics\n");
+  // printf("miss\ttoinvalid\ttodirty\tInTransition\tdirty\tshared\n");
+  printf("%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n"
+                       , worker->no_cache_miss_.load()
+                       , worker->no_cache_state_toinvalid_.load()
+                       , worker->no_cache_state_todirty_.load()
+                       , worker->no_cache_state_InTransition_.load()
+                       , worker->no_cache_state_dirty_.load()
+                       , worker->no_cache_state_shared_.load());
 }
 
-void WorkerHandle::ResetCacheStatistics() {
+void WorkerHandle::ResetCacheStatistics()
+{
+
+    worker->no_cache_miss_ = 0;
+    worker->no_cache_state_toinvalid_ = 0;
+    worker->no_cache_state_todirty_ = 0;
+    worker->no_cache_state_InTransition_ = 0;
+    worker->no_cache_state_dirty_ = 0;
+    worker->no_cache_state_shared_ = 0;
 
     worker->no_local_reads_ = 0;
     worker->no_local_reads_hit_ = 0;
@@ -240,4 +289,3 @@ void WorkerHandle::ResetCacheStatistics() {
 
     worker->no_remote_writes_direct_hit_ = 0;
 }
-

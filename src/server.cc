@@ -125,6 +125,7 @@ void Server::ProcessRdmaRequest(ibv_wc& wc) {
       break;
     }
     case IBV_WC_RECV_RDMA_WITH_IMM: {
+      epicLog(LOG_DEBUG, "write at here");
       epicLog(LOG_DEBUG, "Get recv with IMM completion event");
       char* data = cli->RecvComp(wc);
 

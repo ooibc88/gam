@@ -567,10 +567,16 @@ unsigned long long Worker::SubmitRequest(Client *cli, WorkRequest *wr, int flag,
   // Just_for_test("submitrequest", wr);
   wr->wid = GetWorkerId();
 
-  if (!((wr->op & REPLY) || (flag & REQUEST_NO_ID))) // 之前一直没注意这一句
+  if (!((wr->op & REPLY) || (flag & REQUEST_NO_ID)))
+  {
     wr->id = GetWorkPsn();
-  if (flag & ADD_TO_PENDING)
+    epicLog(LOG_DEBUG, "wr->id = %d", wr->id);
+  }
+
+  if (flag & ADD_TO_PENDING){
     AddToPending(wr->id, wr);
+    epicLog(LOG_DEBUG, "add to pending, wr->id = %d", wr->id);
+  }
   if (flag & REQUEST_WRITE_IMM)
   {
     // epicLog(LOG_WARNING, "should not use for now");
@@ -778,6 +784,7 @@ int Worker::Notify(WorkRequest *wr)
   // Just_for_test("Notify", wr);
   if (wr->op == WRITE || wr->op == WLOCK)
   {
+    epicLog(LOG_DEBUG, "Notify and wr->op == WRITE || wr->op == WLOCK");
     if (IsLocal(wr->addr))
     {
       ++no_local_writes_;
@@ -787,8 +794,12 @@ int Worker::Notify(WorkRequest *wr)
     else
     {
       ++no_remote_writes_;
+      epicLog(LOG_DEBUG, "++no_remote_writes_", no_remote_writes_.load());
       if (wr->is_cache_hit_)
+      {
         ++no_remote_writes_hit_;
+        epicLog(LOG_DEBUG, "++no_remote_writes_hit_", no_remote_writes_hit_.load());
+      }
     }
   }
 
@@ -922,18 +933,89 @@ int Worker::GetAndErasePendingWork(unsigned int id, WorkRequest **wp)
   return ret;
 }
 
-int Worker::FlushToHome(int workId, void *dest, void *src, int size)
+int Worker::FlushToHome(int workId, void *dest, void *src, int size, int id)
 {
+  epicLog(LOG_DEBUG, "flush to home");
   Client *client = FindClientWid(workId);
+
   if (client == nullptr)
   {
     epicLog(LOG_DEBUG, "cannot find the client for worker %d", workId);
     return -1;
   }
-  client->WriteWithImm(dest, src, size,0);
+  // client->WriteWithImm(dest, src, size, id);
+  client->Write(dest, src, size);
   return 0;
 }
 
+int Worker::releaseLock(GAddr addr)
+{
+  epicLog(LOG_DEBUG, "release lock");
+  while (to_flush_list.empty() == false)
+  {
+    sleep(0.01);
+    epicLog(LOG_DEBUG, "to_flush_list.empty() == false");
+  }
+  epicLog(LOG_DEBUG, "this_id = %ld,release is done", std::this_thread::get_id());
+  flush_done = true;
+  while(is_acquired.load() == true){
+    sleep(0.01);
+    epicLog(LOG_DEBUG, "is_acquired.load() == true");
+  }
+  
+  return 0;
+}
+
+int Worker::ConsumerToFlushList()
+{
+  // 检测to_flush_list 队列中是否有元素
+  while (true)
+  {
+    if (flush_done.load() == true)
+    {
+      epicLog(LOG_DEBUG, "flush done,stop thread id = %ld", std::this_thread::get_id());
+      is_acquired = false;
+      break;
+    }
+    
+    if (to_flush_list.empty())
+    {
+      sleep(0.01);
+    }
+    else
+    {
+      epicLog(LOG_DEBUG, "to_flush_list is not empty,this_id = %ld, to_flush_list size = %d", std::this_thread::get_id(), to_flush_list.size());
+      // 从队列中取出元素
+      pair<GAddr, int> addr_size = to_flush_list.front();
+      to_flush_list.pop();
+      GAddr addr = addr_size.first;
+      int size = addr_size.second;
+      epicLog(LOG_DEBUG, "here here addr = %lx, size = %d,work_id = %d", addr, size, GetWorkerId());
+
+      int home_id = WID(addr);
+      GAddr home_addr = EMPTY_GLOB(home_id);
+      Client *home_client = GetClient(home_addr);
+      void *dest = home_client->ToLocal_flush(addr);
+      void *src = GetCacheLocal(addr);
+      int workId = GetWorkerId();
+      int id = 0;
+      FlushToHome(home_id, dest, src, size, id);
+    }
+  }
+  return 0;
+}
+
+int Worker::acquireLock(GAddr addr, int size)
+{
+  epicAssert(is_acquired == false);
+  epicLog(LOG_DEBUG, "acquire lock");
+  is_acquired = true;
+  flush_done = false;
+
+  std::thread t1(&Worker::ConsumerToFlushList, this);
+  t1.detach();
+  return 0;
+}
 
 Worker::~Worker()
 {

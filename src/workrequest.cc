@@ -149,6 +149,7 @@ int WorkRequest::Ser(char *buf, int &len)
   case FETCH_AND_SHARED:
   case FETCH_AND_INVALIDATE:
   case INVALIDATE:
+  case InitAcquire:
     len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag);
     break;
   case READ_FORWARD:
@@ -342,6 +343,7 @@ int WorkRequest::Deser(const char *buf, int &len)
   case FETCH_AND_SHARED:
   case FETCH_AND_INVALIDATE:
   case INVALIDATE:
+  case InitAcquire:
     p += readInteger(p, id, wid, addr, size, ptr, flag);
     break;
   case READ_FORWARD:

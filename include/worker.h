@@ -155,6 +155,9 @@ class Worker : public Server
 
   atomic<Size> ghost_size; // the locally allocated size that is not synced with Master
 
+  /*add wpq add*/
+  // vector<pair<GAddr, int>> to_flush_list;
+
 #ifdef DHT
   void *htable = nullptr;
 #endif
@@ -168,6 +171,22 @@ class Worker : public Server
 public:
   // cahce hit ratio statistics
   // number of local reads absorbed by the cache
+
+  queue<pair<GAddr, int>> to_flush_list;
+
+  atomic<bool> flush_done;
+  atomic<bool> flush_list_empty;
+  atomic<bool> is_acquired;
+
+  atomic<bool> is_complete;
+
+  atomic<Size> no_cache_miss_;
+  atomic<Size> no_cache_state_toinvalid_;
+  atomic<Size> no_cache_state_todirty_;
+  atomic<Size> no_cache_state_InTransition_;
+  atomic<Size> no_cache_state_dirty_;
+  atomic<Size> no_cache_state_shared_;
+
   atomic<Size> no_local_reads_;
   atomic<Size> no_local_reads_hit_;
 
@@ -183,6 +202,8 @@ public:
   atomic<Size> no_remote_writes_;
   atomic<Size> no_remote_writes_hit_;
   atomic<Size> no_remote_writes_direct_hit_;
+
+  atomic<Size> no_initAcquire_;
 
   // logging
   void logWrite(GAddr addr, Size sz, const void *content)
@@ -278,6 +299,7 @@ public:
   void ProcessRequest(Client *client, unsigned int work_id);
   void ProcessPendingRequest(Client *cli, WorkRequest *wr);
   void ProcessPendingRead(Client *cli, WorkRequest *wr);
+  void ProcessPendingInitAcquire(Client *cli, WorkRequest *wr);
   void ProcessPendingReadForward(Client *cli, WorkRequest *wr);
   void ProcessPendingWrite(Client *cli, WorkRequest *wr);
   void ProcessPendingWriteForward(Client *cli, WorkRequest *wr);
@@ -317,6 +339,7 @@ public:
 
   void CreateDir(WorkRequest *wr, DataState Cur_state = DataState::MSI, GAddr Owner = 0); // 每次malloc在home_node上和owner_node都需要建立directory.
   int ProcessLocalFlushToHome(WorkRequest *wr);
+  int ProcessLocalInitAcquire(WorkRequest *wr);
   void CreateCache(WorkRequest *wr, DataState Dstate = DataState::MSI); // 每次状态转换，需要在owner_node上建立cache，除非home_node=owner_node
   // Code开头的函数都用于简化下代码，实在是太冗长了，还是得写成函数才好,代码放在local_request_cache.cc的最后吧
   void Code_invalidate(WorkRequest *wr, DirEntry *entry, GAddr blk);
@@ -350,19 +373,31 @@ public:
   void ProcessRemoteChangeSubLog(Client *client, WorkRequest *wr);
 
   void ProcessRemoteWriteSharedRead(Client *client, WorkRequest *wr);
+  void ProcessRemoteInitAcquire(Client *client, WorkRequest *wr);
   void ProcessPendingWritesharedRead(Client *client, WorkRequest *wr);
 
   void ProcessFlushToHome(Client *client, WorkRequest *wr);
 
-  int FlushToHome(int workId, void *dest, void *src, int size);
+  int FlushToHome(int workId, void *dest, void *src, int size, int id);
+
+  int releaseLock(GAddr addr);
+
+  int ConsumerToFlushList();
+
+
+  int acquireLock(GAddr addr, int size);
 
   inline void *GetCacheLocal(GAddr addr)
   {
     int offset = addr % BLOCK_SIZE;
-    epicLog(LOG_DEBUG, "addr=%lx, offset=%d", addr, offset);
-    epicLog(LOG_DEBUG, "WorkerId=%d,TOBLOCK(addr)=%lx\n",GetWorkerId(), TOBLOCK(addr));
-    epicLog(LOG_DEBUG, "cache.GetLine(%lx)=%lx", TOBLOCK(addr), cache.GetLine(TOBLOCK(addr)));
-    return (void *)(cache.GetLine(TOBLOCK(addr)) + offset);
+    void *temp1 = cache.GetLine(TOBLOCK(addr));
+    epicLog(LOG_DEBUG, "cache.GetLine(%lx)=%lx,workid=%d,offset=%lx\n", TOBLOCK(addr), temp1, GetWorkerId(), offset);
+    return (void *)((char *)temp1 + offset);
+  }
+
+  inline void AddToFlushList(GAddr addr, int size)
+  {
+    to_flush_list.push(pair<GAddr, int>(addr, size));
   }
 
   /* add wpq add */
@@ -398,6 +433,7 @@ public:
   inline void *ToLocal(GAddr addr)
   {
     epicAssert(IsLocal(addr));
+    epicLog(LOG_DEBUG, "workid=%d, addr=%lx, base=%lx", GetWorkerId(), addr, base);
     return TO_LOCAL(addr, base);
   }
   inline GAddr ToGlobal(void *ptr)

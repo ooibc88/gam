@@ -318,8 +318,8 @@ int main() {
   //ibv_device **list = ibv_get_device_list(NULL);;
   int i;
 
-  Solve();
-  return 0;
+  // Solve();
+  // return 0;
   /*
   //master
   Conf* conf = new Conf();

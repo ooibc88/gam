@@ -572,6 +572,11 @@ void Worker::ProcessRequest(Client *client, WorkRequest *wr)
     ProcessRemoteWriteSharedRead(client, wr);
     break;
   }
+  case InitAcquire:
+  {
+    ProcessRemoteInitAcquire(client, wr);
+    break;
+  }
   /* add wpq add */
 #ifdef NOCACHE
   case RLOCK:
