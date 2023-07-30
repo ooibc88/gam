@@ -396,18 +396,18 @@ int Worker::ProcessLocalInitAcquire(WorkRequest *wr)
 {
   epicAssert(InitAcquire == wr->op);
   int newcline = 0;
-  GAddr start_blk = TOBLOCK(wr->addr);
-  GAddr end = GADD(wr->addr, wr->size);
-  GAddr end_blk = TOBLOCK(end - 1);
+  GAddr start_blk = TOBLOCK(wr->addr);//if addr=0, start_blk=0
+  GAddr end = GADD(wr->addr, wr->size);//if size=1024,end=1024
+  GAddr end_blk = TOBLOCK(end - 1);//if size=1024,end_blk=512
 
   Client *cli = GetClient(wr->addr);
   GAddr start = wr->addr;
 
   wr->lock();
 
-  for (GAddr i = start_blk; i < end;)
+  for (GAddr i = start_blk; i < end;)//start_blk=0,end=1024
   {
-    GAddr nextb = BADD(i, 1);
+    GAddr nextb = BADD(i, 1);//nextb=512
     
     cache.lock(i);
     CacheLine *cline = nullptr;
@@ -417,11 +417,13 @@ int Worker::ProcessLocalInitAcquire(WorkRequest *wr)
     cline = cache.SetCLine(i);
 
     lwr->addr = i;
-    lwr->counter = 0;
+    lwr->counter = 1;
     lwr->size = BLOCK_SIZE;
     lwr->ptr = cline->line;
     lwr->parent = wr;
     wr->counter++;
+
+    epicLog(LOG_DEBUG, "workId = %d, wr->counter = %d\n", GetWorkerId(), wr->counter.load());
 
     SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
 

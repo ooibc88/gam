@@ -639,6 +639,7 @@ int Cache::ReadWrite(WorkRequest *wr)
     CacheLine *cline = nullptr;
     if ((cline = GetCLine(i)))
     {
+      worker->no_cache_exist_++;
       CacheState state = cline->state;
       // FIXME: may violate the ordering guarantee of single thread
       // special processing when cache is in process of eviction
@@ -681,7 +682,13 @@ int Cache::ReadWrite(WorkRequest *wr)
 
       if (unlikely(InTransitionState(state)))
       {
-        worker->no_cache_state_InTransition_++;
+        if(wr->op==READ){
+          worker->no_cache_state_InTransition_read++;
+        }
+        else if(wr->op==WRITE){
+          worker->no_cache_state_InTransition_write++;
+        }
+        
         if (state == CACHE_TO_DIRTY)
         {
           epicLog(LOG_DEBUG, "state = CACHE_TO_DIRTY");
@@ -730,6 +737,7 @@ int Cache::ReadWrite(WorkRequest *wr)
         cline->nread++;
         nread++;
 #endif
+        worker->no_cache_read_hit_++;
         memcpy(ls, cs, len);
 #ifdef USE_LRU
         UnLinkLRU(cline);

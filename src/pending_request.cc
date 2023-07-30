@@ -184,8 +184,8 @@ void Worker::ProcessPendingInitAcquire(Client *cli, WorkRequest *wr)
   {
     parent->unlock();
   }
-  delete wr;
-  wr = nullptr;
+  // delete wr;
+  // wr = nullptr;
 }
 
 void Worker::ProcessPendingReadForward(Client *cli, WorkRequest *wr)

@@ -984,12 +984,13 @@ int Worker::ConsumerToFlushList()
     }
     else
     {
-      epicLog(LOG_DEBUG, "to_flush_list is not empty,this_id = %ld, to_flush_list size = %d", std::this_thread::get_id(), to_flush_list.size());
+      // epicLog(LOG_PQ, "to_flush_list is not empty,this_id = %ld, to_flush_list size = %d", std::this_thread::get_id(), to_flush_list.size());
       // 从队列中取出元素
-      pair<GAddr, int> addr_size = to_flush_list.front();
-      to_flush_list.pop();
-      GAddr addr = addr_size.first;
-      int size = addr_size.second;
+      // pair<GAddr, int> addr_size = to_flush_list.front();
+      GAddr addr;
+      to_flush_list.pop(addr);
+      // GAddr addr = addr_size.first;
+      int size = flush_size;
       epicLog(LOG_DEBUG, "here here addr = %lx, size = %d,work_id = %d", addr, size, GetWorkerId());
 
       int home_id = WID(addr);
@@ -1010,10 +1011,11 @@ int Worker::acquireLock(GAddr addr, int size)
   epicAssert(is_acquired == false);
   epicLog(LOG_DEBUG, "acquire lock");
   is_acquired = true;
-  flush_done = false;
+  flush_done = false; 
 
   std::thread t1(&Worker::ConsumerToFlushList, this);
   t1.detach();
+
   return 0;
 }
 

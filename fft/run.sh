@@ -10,5 +10,3 @@ do
     # ./t2 $iteration >> output.txt 
     ./t3 $iteration >> output.txt
 done
-
-

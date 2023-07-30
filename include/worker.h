@@ -172,7 +172,10 @@ public:
   // cahce hit ratio statistics
   // number of local reads absorbed by the cache
 
-  queue<pair<GAddr, int>> to_flush_list;
+  // queue<pair<GAddr, int>> to_flush_list;
+  // boost::lockfree::queue<pair<GAddr, int>> to_flush_list;
+  boost::lockfree::queue<GAddr> to_flush_list;
+  int flush_size;
 
   atomic<bool> flush_done;
   atomic<bool> flush_list_empty;
@@ -181,9 +184,13 @@ public:
   atomic<bool> is_complete;
 
   atomic<Size> no_cache_miss_;
+  atomic<Size> no_cache_exist_;
   atomic<Size> no_cache_state_toinvalid_;
+  atomic<Size> no_cache_read_hit_;
   atomic<Size> no_cache_state_todirty_;
   atomic<Size> no_cache_state_InTransition_;
+  atomic<Size> no_cache_state_InTransition_read;
+  atomic<Size> no_cache_state_InTransition_write;
   atomic<Size> no_cache_state_dirty_;
   atomic<Size> no_cache_state_shared_;
 
@@ -397,7 +404,8 @@ public:
 
   inline void AddToFlushList(GAddr addr, int size)
   {
-    to_flush_list.push(pair<GAddr, int>(addr, size));
+    // to_flush_list.push(pair<GAddr, int>(addr, size));
+    to_flush_list.push(addr);
   }
 
   /* add wpq add */

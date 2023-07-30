@@ -256,22 +256,28 @@ void WorkerHandle::ReportCacheStatistics()
 
   // printf("Cache Statistics\n");
   // printf("miss\ttoinvalid\ttodirty\tInTransition\tdirty\tshared\n");
-  printf("%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n"
+  printf("%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n"
+                       , worker->no_cache_exist_.load()
                        , worker->no_cache_miss_.load()
+                       , worker->no_cache_read_hit_.load()
                        , worker->no_cache_state_toinvalid_.load()
                        , worker->no_cache_state_todirty_.load()
-                       , worker->no_cache_state_InTransition_.load()
+                       , worker->no_cache_state_InTransition_read.load()
+                       , worker->no_cache_state_InTransition_write.load()
                        , worker->no_cache_state_dirty_.load()
                        , worker->no_cache_state_shared_.load());
 }
 
 void WorkerHandle::ResetCacheStatistics()
 {
-
+    worker->no_cache_exist_ = 0;
     worker->no_cache_miss_ = 0;
+    worker->no_cache_read_hit_ = 0;
     worker->no_cache_state_toinvalid_ = 0;
     worker->no_cache_state_todirty_ = 0;
     worker->no_cache_state_InTransition_ = 0;
+    worker->no_cache_state_InTransition_read = 0;
+    worker->no_cache_state_InTransition_write = 0;
     worker->no_cache_state_dirty_ = 0;
     worker->no_cache_state_shared_ = 0;
 

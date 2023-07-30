@@ -68,21 +68,24 @@ public:
     wr.addr = addr;
     if (SendRequest(&wr))
     {
-        epicLog(LOG_WARNING, "send request failed");
+      epicLog(LOG_WARNING, "send request failed");
     }
   }
-  
-  inline void acquireLock(GAddr addr, int size)
+
+  inline void acquireLock(GAddr addr, int size, bool flag)
   {
-    
+
     if (GetWorkerId() == WID(addr))
     {
       epicLog(LOG_DEBUG, "this is master, no need to acquire lock");
       return;
     }
-    readAll(addr, size);
+    if (flag == true)
+    {
+      readAll(addr, size);
+    }
     epicLog(LOG_DEBUG, "read all done,workerid=%d,isAcquired=%d", GetWorkerId(), worker->is_acquired.load());
-    
+
     worker->acquireLock(addr, size);
   }
 

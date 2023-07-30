@@ -1,3 +1,10 @@
+//
+// Created by hrh on 1/4/23.
+//
+#include <iostream>
+#include <gflags/gflags.h>
+
+// GAM
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +23,6 @@
 #include "master.h"
 #include "gallocator.h"
 #include "workrequest.h"
-#include "log.h"
 
 using namespace std;
 #define PI acos(-1)
@@ -31,7 +37,7 @@ WorkerHandle *malloc_wh;
 WorkerHandle *wh[10];
 
 // 可以改
-int length = 1 << 9;
+int length = 1 << 10;
 #define N length
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
@@ -144,6 +150,9 @@ void sub_fft(WorkerHandle *Cur_wh, GAddr addr_value, unsigned int n, unsigned in
         Write_val(Cur_wh, addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>));
     }
 }
+void test()
+{
+}
 
 void p_fft_RC(GAddr addr_value)
 {
@@ -154,7 +163,7 @@ void p_fft_RC(GAddr addr_value)
     Complex T;
 
     while (k > 1)
-    // while (k > N / 4)
+    // while (k > N / 2)
     {
         printf("k = %d\n", k);
         // k=64,32,16,8,4,2,1 ，表示组数
@@ -167,7 +176,10 @@ void p_fft_RC(GAddr addr_value)
         // parallel
 
         for (int i = 1; i <= parrallel_num; i++)
-            wh[i]->acquireLock(addr_value, sizeof(complex<float>) * N);
+        {
+            // printf("acquireLock i=%d\n", i);
+            wh[i]->acquireLock(addr_value, sizeof(complex<float>) * N, true);
+        }
 
         for (unsigned int l = 0; l < k; l++)
         {
@@ -234,12 +246,14 @@ void p_fft_MSI(GAddr addr_value)
         T = 1.0L;
 
         // parallel
+
         for (unsigned int l = 0; l < k; l++)
         {
 
             // l表示每一组的首个元素的下标
             int id = l % parrallel_num + 1;
             threads[id - 1] = thread(sub_fft, wh[id], addr_value, n, l, k, T);
+            // threads[id - 1] = thread(test);
             threads[id - 1].join();
 
             T *= phiT;
@@ -339,8 +353,11 @@ void Solve_MSI()
 
     complex<float> readbuf[N];
     Read_val(wh[0], addr_value, (int *)readbuf, sizeof(complex<float>) * N);
-    for (int i = 0; i < N; i++)
-        printf("readbuf[%d]=%f+%fi\n", i, readbuf[i].real(), readbuf[i].imag());
+    // for (int i = 0; i < N; i++)
+    // printf("readbuf[%d]=%f+%fi\n", i, readbuf[i].real(), readbuf[i].imag());
+
+    for (int i = 0; i < num_worker; ++i)
+        wh[i]->ReportCacheStatistics();
 }
 
 int main(int argc, char *argv[])
@@ -352,27 +369,7 @@ int main(int argc, char *argv[])
     for (int i = 0; i < parrallel_num + 2; ++i)
         Create_worker();
 
-    Solve_MSI();
-    // Solve_RC();
+    // Solve_MSI();
+    Solve_RC();
     return 0;
 }
-
-// void func1()
-// {
-//     //基于RC的缓存一致性
-//     GAddr addr_A = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, RC_Write_shared, 1);
-
-//     //分类缓存一致性
-//     GAddr addr_B = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Read_only, 1);
-//     GAddr addr_C = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Read_mostly, 1);
-//     GAddr addr_D = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Access_exclusive, 1);
-//     GAddr addr_E = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Write_exclusive,1);
-//     GAddr addr_F = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Write_shared, 1);
-
-//     // 允许有界旧值的缓存一致性
-//     GAddr addr_G = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Bounded_incoherence,1);
-
-//     //默认MSI
-//     GAddr addr_H = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Msi, 1);
-
-// }
