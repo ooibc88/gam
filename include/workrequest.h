@@ -171,7 +171,8 @@ struct WorkRequest
 {
   unsigned int id;  // identifier of the work request
   unsigned int pid; // identifier of the parent work request (used for FORWARD request)
-  int pwid;         // identifier of the parent worker
+  atomic<int> flush_id;
+  int pwid; // identifier of the parent worker
   enum Work op;
 
   union

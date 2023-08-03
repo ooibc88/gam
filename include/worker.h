@@ -155,9 +155,6 @@ class Worker : public Server
 
   atomic<Size> ghost_size; // the locally allocated size that is not synced with Master
 
-  /*add wpq add*/
-  // vector<pair<GAddr, int>> to_flush_list;
-
 #ifdef DHT
   void *htable = nullptr;
 #endif
@@ -169,19 +166,26 @@ class Worker : public Server
 #endif
 
 public:
-  // cahce hit ratio statistics
-  // number of local reads absorbed by the cache
+  boost::lockfree::queue<GAddr> to_flush_list1;
+  boost::lockfree::queue<GAddr> to_flush_list2;
+  boost::lockfree::queue<GAddr> to_flush_list3;
+  boost::lockfree::queue<GAddr> to_flush_list4;
 
-  // queue<pair<GAddr, int>> to_flush_list;
-  // boost::lockfree::queue<pair<GAddr, int>> to_flush_list;
-  boost::lockfree::queue<GAddr> to_flush_list;
-  int flush_size;
+  // map
+  unordered_map<int, boost::lockfree::queue<GAddr> *> to_flush_list{
+      {1, &to_flush_list1},
+      {2, &to_flush_list2},
+      {3, &to_flush_list3},
+      {4, &to_flush_list4}};
 
-  atomic<bool> flush_done;
-  atomic<bool> flush_list_empty;
-  atomic<bool> is_acquired;
+  int flush_size[100];
 
-  atomic<bool> is_complete;
+  atomic<bool> flush_done[100];
+  atomic<bool> flush_list_empty[100];
+
+  atomic<bool> is_acquired[100];
+
+  atomic<bool> is_complete[100];
 
   atomic<Size> no_cache_miss_;
   atomic<Size> no_cache_exist_;
@@ -387,12 +391,11 @@ public:
 
   int FlushToHome(int workId, void *dest, void *src, int size, int id);
 
-  int releaseLock(GAddr addr);
+  int releaseLock(int id, GAddr addr);
 
   int ConsumerToFlushList();
 
-
-  int acquireLock(GAddr addr, int size);
+  int acquireLock(int id, GAddr addr, int size);
 
   inline void *GetCacheLocal(GAddr addr)
   {
@@ -402,10 +405,9 @@ public:
     return (void *)((char *)temp1 + offset);
   }
 
-  inline void AddToFlushList(GAddr addr, int size)
+  inline void AddToFlushList(int id, GAddr addr)
   {
-    // to_flush_list.push(pair<GAddr, int>(addr, size));
-    to_flush_list.push(addr);
+    to_flush_list[id]->push(addr);
   }
 
   /* add wpq add */

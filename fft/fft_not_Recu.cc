@@ -37,12 +37,12 @@ WorkerHandle *malloc_wh;
 WorkerHandle *wh[10];
 
 // 可以改
-int length = 1 << 10;
+int length = 1 << 6;
 #define N length
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
 int iteration_times = 1;
-int parrallel_num = 8;
+int parrallel_num = 2;
 
 void Create_master()
 {
@@ -78,22 +78,24 @@ void Read_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
     }
 }
 
-void Write_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
+void Write_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size, int flush_id)
 {
     WorkRequest wr{};
-    for (int i = 0; i < 1; i++)
+    if(Cur_wh->GetWorkerId() == 0){
+        flush_id = -1;
+    }
+
+    wr.Reset();
+    wr.op = WRITE;
+    wr.wid = Cur_wh->GetWorkerId();
+    // wr.flag = ASYNC; // 可以在这里调
+    wr.flush_id = flush_id;
+    wr.size = size;
+    wr.addr = addr;
+    wr.ptr = (void *)val;
+    if (Cur_wh->SendRequest(&wr))
     {
-        wr.Reset();
-        wr.op = WRITE;
-        wr.wid = Cur_wh->GetWorkerId();
-        // wr.flag = ASYNC; // 可以在这里调
-        wr.size = size;
-        wr.addr = addr;
-        wr.ptr = (void *)val;
-        if (Cur_wh->SendRequest(&wr))
-        {
-            epicLog(LOG_WARNING, "send request failed");
-        }
+        epicLog(LOG_WARNING, "send request failed");
     }
 }
 
@@ -145,9 +147,9 @@ void sub_fft(WorkerHandle *Cur_wh, GAddr addr_value, unsigned int n, unsigned in
         Read_val(Cur_wh, addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>));
         Complex t = xa - xb;
         xa = xa + xb;
-        Write_val(Cur_wh, addr_value + a * sizeof(complex<float>), (int *)&xa, sizeof(complex<float>));
+        Write_val(Cur_wh, addr_value + a * sizeof(complex<float>), (int *)&xa, sizeof(complex<float>), 1);
         xb = t * T;
-        Write_val(Cur_wh, addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>));
+        Write_val(Cur_wh, addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>), 1);
     }
 }
 void test()
@@ -178,7 +180,7 @@ void p_fft_RC(GAddr addr_value)
         for (int i = 1; i <= parrallel_num; i++)
         {
             // printf("acquireLock i=%d\n", i);
-            wh[i]->acquireLock(addr_value, sizeof(complex<float>) * N, true);
+            wh[i]->acquireLock(1, addr_value, sizeof(complex<float>) * N, true, sizeof(complex<float>));
         }
 
         for (unsigned int l = 0; l < k; l++)
@@ -193,7 +195,7 @@ void p_fft_RC(GAddr addr_value)
         }
 
         for (int i = 1; i <= parrallel_num; i++)
-            wh[i]->releaseLock(addr_value);
+            wh[i]->releaseLock(1, addr_value);
     }
 
     // Decimate
@@ -219,8 +221,8 @@ void p_fft_RC(GAddr addr_value)
             t = xa;
             xa = xb;
             xb = t;
-            Write_val(wh[0], addr_value + a * sizeof(complex<float>), (int *)&xa, sizeof(complex<float>));
-            Write_val(wh[0], addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>));
+            Write_val(wh[0], addr_value + a * sizeof(complex<float>), (int *)&xa, sizeof(complex<float>), 1);
+            Write_val(wh[0], addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>), 1);
         }
     }
 }
@@ -283,8 +285,8 @@ void p_fft_MSI(GAddr addr_value)
             t = xa;
             xa = xb;
             xb = t;
-            Write_val(wh[0], addr_value + a * sizeof(complex<float>), (int *)&xa, sizeof(complex<float>));
-            Write_val(wh[0], addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>));
+            Write_val(wh[0], addr_value + a * sizeof(complex<float>), (int *)&xa, sizeof(complex<float>), 1);
+            Write_val(wh[0], addr_value + b * sizeof(complex<float>), (int *)&xb, sizeof(complex<float>), 1);
         }
     }
 }
@@ -302,7 +304,7 @@ void Solve_RC()
     }
     GAddr addr_value = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, RC_Write_shared, 1);
 
-    Write_val(malloc_wh, addr_value, (int *)value, sizeof(complex<float>) * N);
+    Write_val(malloc_wh, addr_value, (int *)value, sizeof(complex<float>) * N, 1);
 
     int Iteration = iteration_times;
     printf("Start\n");
@@ -338,7 +340,7 @@ void Solve_MSI()
     }
     GAddr addr_value = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Msi, 1);
 
-    Write_val(malloc_wh, addr_value, (int *)value, sizeof(complex<float>) * N);
+    Write_val(malloc_wh, addr_value, (int *)value, sizeof(complex<float>) * N, 1);
 
     int Iteration = iteration_times;
     printf("Start\n");
@@ -353,8 +355,8 @@ void Solve_MSI()
 
     complex<float> readbuf[N];
     Read_val(wh[0], addr_value, (int *)readbuf, sizeof(complex<float>) * N);
-    // for (int i = 0; i < N; i++)
-    // printf("readbuf[%d]=%f+%fi\n", i, readbuf[i].real(), readbuf[i].imag());
+    for (int i = 0; i < N; i++)
+        printf("readbuf[%d]=%f+%fi\n", i, readbuf[i].real(), readbuf[i].imag());
 
     for (int i = 0; i < num_worker; ++i)
         wh[i]->ReportCacheStatistics();
@@ -369,7 +371,7 @@ int main(int argc, char *argv[])
     for (int i = 0; i < parrallel_num + 2; ++i)
         Create_worker();
 
-    // Solve_MSI();
-    Solve_RC();
+    Solve_MSI();
+    // Solve_RC();
     return 0;
 }

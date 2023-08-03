@@ -593,7 +593,7 @@ int Cache::ReadWrite(WorkRequest *wr)
         continue;
       }
     }
-    else if (Cur_Dstate == DataState::RC_WRITE_SHARED )
+    else if (Cur_Dstate == DataState::RC_WRITE_SHARED)
     {
       epicLog(LOG_DEBUG, "RC_WRITE_SHARED, GetWorkerId=%d\n", worker->GetWorkerId());
 
@@ -632,7 +632,12 @@ int Cache::ReadWrite(WorkRequest *wr)
 
       unlock(i);
       i = nextb;
-      worker->AddToFlushList(wr->addr, wr->size);
+
+      if (wr->flush_id.load() > 0 && wr->flush_id.load() < 10)
+      {
+        worker->AddToFlushList(wr->flush_id.load(), wr->addr);
+      }
+
       continue;
     }
     lock(i);
@@ -682,13 +687,15 @@ int Cache::ReadWrite(WorkRequest *wr)
 
       if (unlikely(InTransitionState(state)))
       {
-        if(wr->op==READ){
+        if (wr->op == READ)
+        {
           worker->no_cache_state_InTransition_read++;
         }
-        else if(wr->op==WRITE){
+        else if (wr->op == WRITE)
+        {
           worker->no_cache_state_InTransition_write++;
         }
-        
+
         if (state == CACHE_TO_DIRTY)
         {
           epicLog(LOG_DEBUG, "state = CACHE_TO_DIRTY");

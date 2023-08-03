@@ -59,7 +59,7 @@ void Read_val(WorkerHandle *Cur_wh, GAddr addr, void *val, int size)
     }
 }
 
-void Write_val(WorkerHandle *Cur_wh, GAddr addr, void *val, int size)
+void Write_val(WorkerHandle *Cur_wh, GAddr addr, void *val, int size, int flush_id)
 {
     WorkRequest wr{};
     for (int i = 0; i < 1; i++)
@@ -67,6 +67,7 @@ void Write_val(WorkerHandle *Cur_wh, GAddr addr, void *val, int size)
         wr.Reset();
         wr.op = WRITE;
         // wr.flag = ASYNC; // 可以在这里调
+        wr.flush_id = flush_id;
         wr.size = size;
         wr.addr = addr;
         wr.ptr = (void *)val;
@@ -160,7 +161,7 @@ void Solve_RC()
 
     // clock_t start, stop;
     // start = clock();
-    
+
     ////// calculation code here ///////
     num_threads = num_worker;
 
@@ -174,7 +175,7 @@ void Solve_RC()
 
         for (int i = 1; i < num_threads; i++)
         {
-            wh[i]->acquireLock(c, sizeof(float) * n * n, false);
+            wh[i]->acquireLock(1, c, sizeof(float) * n * n, false, sizeof(float));
         }
 
         for (int i = 0; i < apartx; ++i)
@@ -197,7 +198,7 @@ void Solve_RC()
 
         for (int i = 1; i < num_threads; i++)
         {
-            wh[i]->releaseLock(c);
+            wh[i]->releaseLock(1, c);
         }
     }
 
@@ -233,7 +234,7 @@ void Solve_MSI()
 
     // clock_t start, stop;
     // start = clock();
-    
+
     ////// calculation code here ///////
     num_threads = num_worker;
 
@@ -288,8 +289,8 @@ void Solve_MSI()
 
 int main(int argc, char **argv)
 {
-    // Solve_RC();
-    Solve_MSI();
+    Solve_RC();
+    // Solve_MSI();
     return 0;
 }
 
@@ -308,7 +309,7 @@ static void matMultCPU_serial(WorkerHandle *Cur_wh, GAddr a, GAddr b, GAddr c, i
                 Read_val(Cur_wh, b + (k * n + j) * sizeof(float), &val2, sizeof(float));
                 t += (float)val1 * val2;
                 // printf ("%.3f * %.3f = %.3f\n", val1, val2, t);
-                Write_val(Cur_wh, c + (i * n + j) * sizeof(float), &t, sizeof(float));
+                Write_val(Cur_wh, c + (i * n + j) * sizeof(float), &t, sizeof(float), 1);
             }
             // Write_val(Cur_wh, c + (i * n + j) * sizeof(float), &t, sizeof(float));
         }
@@ -325,7 +326,7 @@ void genMat(GAddr arr, int n)
         {
             // float val = (float)rand() / RAND_MAX + (float)rand() / (RAND_MAX * RAND_MAX);
             float val = i + j;
-            Write_val(wh[0], arr + (i * n + j) * sizeof(float), &val, sizeof(float));
+            Write_val(wh[0], arr + (i * n + j) * sizeof(float), &val, sizeof(float), 1);
         }
     }
 }

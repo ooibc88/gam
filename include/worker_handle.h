@@ -52,9 +52,9 @@ public:
     return worker->FlushToHome(workId, dest, src, size, id);
   }
 
-  inline void releaseLock(GAddr addr)
+  inline void releaseLock(int id, GAddr addr)
   {
-    worker->releaseLock(addr);
+    worker->releaseLock(id, addr);
   }
 
   inline void readAll(GAddr addr, int size)
@@ -72,8 +72,10 @@ public:
     }
   }
 
-  inline void acquireLock(GAddr addr, int size, bool flag)
+  inline void acquireLock(int id, GAddr addr, int size, bool flag, int flush_size)
   {
+    worker->flush_size[id] = flush_size;
+    // worker->flush_size[id] = 0;
 
     if (GetWorkerId() == WID(addr))
     {
@@ -84,9 +86,9 @@ public:
     {
       readAll(addr, size);
     }
-    epicLog(LOG_DEBUG, "read all done,workerid=%d,isAcquired=%d", GetWorkerId(), worker->is_acquired.load());
+    epicLog(LOG_DEBUG, "read all done,workerid=%d,isAcquired=%d", GetWorkerId(), worker->is_acquired[id].load());
 
-    worker->acquireLock(addr, size);
+    worker->acquireLock(id, addr, size);
   }
 
   void ReportCacheStatistics();
