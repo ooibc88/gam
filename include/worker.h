@@ -408,6 +408,7 @@ public:
   inline void AddToFlushList(int id, GAddr addr)
   {
     to_flush_list[id]->push(addr);
+    epicLog(LOG_DEBUG, "AddToFlushList(%d,%lx)\n", id, addr);
   }
 
   /* add wpq add */

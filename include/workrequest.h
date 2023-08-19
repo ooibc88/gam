@@ -189,6 +189,7 @@ struct WorkRequest
   int flagSub2;
 
   void *ptr;
+  uint64_t arg = 0;
 
   int fd;
 #if !defined(USE_PIPE_W_TO_H) || !defined(USE_PIPE_H_TO_W)
@@ -213,7 +214,7 @@ struct WorkRequest
 
 #ifdef GFUNC_SUPPORT
   GFunc *gfunc = nullptr;
-  uint64_t arg = 0;
+  
 #endif
   WorkRequest()
       : fd(),

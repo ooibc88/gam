@@ -1,5 +1,4 @@
-// Copyright (c) 2018 The GAM Authors 
-
+// Copyright (c) 2018 The GAM Authors
 
 #ifndef INCLUDE_GALLOCATOR_H_
 #define INCLUDE_GALLOCATOR_H_
@@ -15,12 +14,14 @@
 #include "gfunc.h"
 #endif
 
-class GAlloc {
-  WorkerHandle* wh;  //handle to communicate with local worker
+class GAlloc
+{
+  WorkerHandle *wh; // handle to communicate with local worker
 
   int Lock(Work op, const GAddr addr, const Size count, Flag flag = 0);
- public:
-  GAlloc(Worker* worker);
+
+public:
+  GAlloc(Worker *worker);
 
   /**
    * malloc in the global address
@@ -29,37 +30,47 @@ class GAlloc {
    * @param base: used to guarantee the affinity,
    * 				trying to put the newly-allocated addr to be in the same node of the base addr
    */
-  //GAddr Malloc(const Size size, Flag flag = 0);
-  //GAddr Malloc(const Size size, GAddr base, Flag flag = 0);
+  // GAddr Malloc(const Size size, Flag flag = 0);
+  // GAddr Malloc(const Size size, GAddr base, Flag flag = 0);
   /* add ergeda add */
-  GAddr Malloc(const Size size, Flag flag = 0, int Owner=0); //为flag增加表示datastate的标志位，Malloc时候有可能需要指定owner。
-  GAddr Malloc(const Size size, GAddr base, Flag flag = 0, int Owner=0);
+  GAddr Malloc(const Size size, Flag flag = 0, int Owner = 0); // 为flag增加表示datastate的标志位，Malloc时候有可能需要指定owner。
+  GAddr Malloc(const Size size, GAddr base, Flag flag = 0, int Owner = 0);
   /* add ergeda add */
-  GAddr AlignedMalloc(const Size size, GAddr base, Flag flag = 0);
-  GAddr AlignedMalloc(const Size size, Flag flag = 0);
+  GAddr AlignedMalloc(const Size size, GAddr base, Flag flag = Msi, int Owner = 0);
+  GAddr AlignedMalloc(const Size size, Flag flag = Msi, int Owner = 0);
   GAddr Calloc(Size nmemb, Size size, Flag flag, GAddr base);
   GAddr Realloc(GAddr ptr, Size size, Flag flag);
+  inline void acquireLock(int id, GAddr addr, int size, bool flag, int flush_size)
+  {
+    wh->acquireLock(id, addr, size, flag, flush_size);
+  }
+  inline void releaseLock(int id, GAddr addr)
+  {
+    wh->releaseLock(id, addr);
+  }
 
   void Free(const GAddr addr);
 
   /*
    * read is blocking until buf is filled with requested data
    */
-  int Read(const GAddr addr, void* buf, const Size count, Flag flag = 0);
-  int Read(const GAddr addr, const Size offset, void* buf, const Size count,
+  int Read(const GAddr addr, void *buf, const Size count, Flag flag = 0);
+  int Read(const GAddr addr, const Size offset, void *buf, const Size count,
            Flag flag = 0);
 
   /*
    * Generally, write is non-blocking as we're using release memory consistency model
    */
-  int Write(const GAddr addr, void* buf, const Size count, Flag flag = 0);
+
+
+  int Write(const GAddr addr, void *buf, const Size count, int flush_id=0, Flag flag = 0);
 #ifdef GFUNC_SUPPORT
-  int Write(const GAddr addr, const Size offset, void* buf, const Size count,
-            Flag flag = 0, GFunc* func = nullptr, uint64_t arg = 0);
-  int Write(const GAddr addr, void* buf, const Size count, GFunc* func,
+  int Write(const GAddr addr, const Size offset, void *buf, const Size count, int flush_id=0,
+            Flag flag = 0, GFunc *func = nullptr, uint64_t arg = 0);
+  int Write(const GAddr addr, void *buf, const Size count,  GFunc *func,int flush_id=0,
             uint64_t arg = 0, Flag flag = 0);
 #else
-  int Write(const GAddr addr, const Size offset, void* buf, const Size count, Flag flag = 0);
+  int Write(const GAddr addr, const Size offset, void *buf, const Size count, int flush_id=0, Flag flag = 0);
 #endif
 
   void MFence();
@@ -73,24 +84,27 @@ class GAlloc {
   int Try_RLock(const GAddr addr, const Size count);
   int Try_WLock(const GAddr addr, const Size count);
 
-  Size Put(uint64_t key, const void* value, Size count);
-  Size Get(uint64_t key, void* value);
+  Size Put(uint64_t key, const void *value, Size count);
+  Size Get(uint64_t key, void *value);
 
 #ifdef DHT
-  int HTable(void*);
+  int HTable(void *);
 #endif
 
-  inline int GetID() {
+  inline int GetID()
+  {
     return wh->GetWorkerId();
   }
-  int GetWorkersSize() {
+  int GetWorkersSize()
+  {
     return wh->GetWorkersSize();
   }
 
   /*
    * check whether addr is a local addr or not
    */
-  inline bool IsLocal(GAddr addr) {
+  inline bool IsLocal(GAddr addr)
+  {
     return WID(addr) == GetID();
   }
 
@@ -98,107 +112,135 @@ class GAlloc {
    * return the local pointer of the global address addr
    * if not local, return nullptr
    */
-  inline void* GetLocal(GAddr addr) {
-    if (!IsLocal(addr)) {
+  inline void *GetLocal(GAddr addr)
+  {
+    if (!IsLocal(addr))
+    {
       return nullptr;
-    } else {
+    }
+    else
+    {
       return wh->GetLocal(addr);
     }
   }
 
-  void ReportCacheStatistics() {
+  void ReportCacheStatistics()
+  {
     wh->ReportCacheStatistics();
   }
 
-  void ResetCacheStatistics() {
+  void ResetCacheStatistics()
+  {
     wh->ResetCacheStatistics();
   }
 
   ~GAlloc();
 };
 
-class GAllocFactory {
-  static const Conf* conf;
-  static Worker* worker;
-  static Master* master;
+class GAllocFactory
+{
+  static const Conf *conf;
+  static Worker *worker;
+  static Master *master;
   static LockWrapper lock;
- public:
+
+public:
 #ifdef GFUNC_SUPPORT
 #define MAX_GFUNCS 100
-  static GFunc* gfuncs[MAX_GFUNCS];
+  static GFunc *gfuncs[MAX_GFUNCS];
 #endif
   /*
    * this function should be call in every thread
    * in order to init some per-thread data
    */
-  static GAlloc* CreateAllocator(const std::string& conf_file) {
+  static GAlloc *CreateAllocator(const std::string &conf_file)
+  {
     return CreateAllocator(ParseConf(conf_file));
   }
 
-  static const Conf* InitConf() {
+  static const Conf *InitConf()
+  {
     lock.lock();
     conf = new Conf();
-    const Conf* ret = conf;
+    const Conf *ret = conf;
     lock.unlock();
     return ret;
   }
 
-  //need to call for every thread
-  static GAlloc* CreateAllocator(const Conf* c = nullptr) {
+  // need to call for every thread
+  static GAlloc *CreateAllocator(const Conf *c = nullptr)
+  {
     lock.lock();
-    if (c) {
-      if (!conf) {
+    if (c)
+    {
+      if (!conf)
+      {
         conf = c;
-      } else {
+      }
+      else
+      {
         epicLog(LOG_INFO, "NOTICE: Conf already exist %lx", conf);
       }
-    } else {
-      if (!conf) {
+    }
+    else
+    {
+      if (!conf)
+      {
         epicLog(LOG_FATAL, "Must provide conf for the first time");
       }
     }
 
-    if (conf->is_master) {
+    if (conf->is_master)
+    {
       if (!master)
         master = MasterFactory::CreateServer(*conf);
     }
-    if (!worker) {
+    if (!worker)
+    {
       worker = WorkerFactory::CreateServer(*conf);
     }
-    GAlloc* ret = new GAlloc(worker);
+    GAlloc *ret = new GAlloc(worker);
     lock.unlock();
     return ret;
   }
 
-  //need to call for every thread
-  static GAlloc* CreateAllocator(const Conf& c) {
+  // need to call for every thread
+  static GAlloc *CreateAllocator(const Conf &c)
+  {
     lock.lock();
-    if (!conf) {
-      Conf* lc = new Conf();
+    if (!conf)
+    {
+      Conf *lc = new Conf();
       *lc = c;
       conf = lc;
-    } else {
+    }
+    else
+    {
       epicLog(LOG_INFO, "Conf already exist %lx", conf);
     }
-    if (conf->is_master) {
+    if (conf->is_master)
+    {
       if (!master)
         master = MasterFactory::CreateServer(*conf);
     }
-    if (!worker) {
+    if (!worker)
+    {
       worker = WorkerFactory::CreateServer(*conf);
     }
-    GAlloc* ret = new GAlloc(worker);
+    GAlloc *ret = new GAlloc(worker);
     lock.unlock();
     return ret;
   }
 
-  static void SetConf(Conf* c) {
+  static void SetConf(Conf *c)
+  {
     lock.lock();
     conf = c;
     lock.unlock();
   }
 
-  static void FreeResouce() {
+  static void FreeResouce()
+  {
     lock.lock();
     delete conf;
     delete worker;
@@ -209,18 +251,21 @@ class GAllocFactory {
   /*
    * TODO: fake parseconf function
    */
-  static const Conf* ParseConf(const std::string& conf_file) {
-    Conf* c = new Conf();
+  static const Conf *ParseConf(const std::string &conf_file)
+  {
+    Conf *c = new Conf();
     return c;
   }
 
-  static int LogLevel() {
+  static int LogLevel()
+  {
     int ret = conf->loglevel;
     return ret;
   }
 
-  static string* LogFile() {
-    string* ret = conf->logfile;
+  static string *LogFile()
+  {
+    string *ret = conf->logfile;
     return ret;
   }
 };

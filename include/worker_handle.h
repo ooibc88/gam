@@ -86,6 +86,8 @@ public:
     {
       readAll(addr, size);
     }
+    epicAssert(GetWorkerId() != WID(addr));
+
     epicLog(LOG_DEBUG, "read all done,workerid=%d,isAcquired=%d", GetWorkerId(), worker->is_acquired[id].load());
 
     worker->acquireLock(id, addr, size);

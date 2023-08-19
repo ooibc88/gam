@@ -71,6 +71,18 @@
         "typeinfo": "cpp",
         "valarray": "cpp",
         "variant": "cpp",
-        "cuchar": "cpp"
-    }
+        "cuchar": "cpp",
+        "*.ipp": "cpp",
+        "any": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "strstream": "cpp",
+        "forward_list": "cpp",
+        "filesystem": "cpp",
+        "regex": "cpp",
+        "scoped_allocator": "cpp",
+        "shared_mutex": "cpp",
+        "charconv": "cpp"
+    },
+    "cmake.sourceDirectory": "/home/wpq/gam/fft-rpc"
 }

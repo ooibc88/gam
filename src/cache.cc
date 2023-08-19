@@ -632,9 +632,12 @@ int Cache::ReadWrite(WorkRequest *wr)
 
       unlock(i);
       i = nextb;
+      epicLog(LOG_DEBUG, "wr->flush_id.load()=%d\n", wr->flush_id.load());
 
-      if (wr->flush_id.load() > 0 && wr->flush_id.load() < 10)
+      if (wr->flush_id.load() > 0 && wr->flush_id.load() < 10 && wr->op == WRITE)
       {
+        
+        // printf("call AddToFlushList, flush_id=%d, addr=%lx\n", wr->flush_id.load(), wr->addr);
         worker->AddToFlushList(wr->flush_id.load(), wr->addr);
       }
 

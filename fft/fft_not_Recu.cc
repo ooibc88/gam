@@ -37,11 +37,12 @@ WorkerHandle *malloc_wh;
 WorkerHandle *wh[10];
 
 // 可以改
-int length = 1 << 6;
+int length = 1 << 10;
 #define N length
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
 int iteration_times = 1;
+int no_run = 1;
 int parrallel_num = 2;
 
 void Create_master()
@@ -81,7 +82,8 @@ void Read_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size)
 void Write_val(WorkerHandle *Cur_wh, GAddr addr, int *val, int size, int flush_id)
 {
     WorkRequest wr{};
-    if(Cur_wh->GetWorkerId() == 0){
+    if (Cur_wh->GetWorkerId() == 0)
+    {
         flush_id = -1;
     }
 
@@ -165,7 +167,6 @@ void p_fft_RC(GAddr addr_value)
     Complex T;
 
     while (k > 1)
-    // while (k > N / 2)
     {
         printf("k = %d\n", k);
         // k=64,32,16,8,4,2,1 ，表示组数
@@ -177,9 +178,8 @@ void p_fft_RC(GAddr addr_value)
         T = 1.0L;
         // parallel
 
-        for (int i = 1; i <= parrallel_num; i++)
+        for (int i = 0; i < parrallel_num; i++)
         {
-            // printf("acquireLock i=%d\n", i);
             wh[i]->acquireLock(1, addr_value, sizeof(complex<float>) * N, true, sizeof(complex<float>));
         }
 
@@ -187,15 +187,17 @@ void p_fft_RC(GAddr addr_value)
         {
 
             // l表示每一组的首个元素的下标
-            int id = l % parrallel_num + 1;
-            threads[id - 1] = thread(sub_fft, wh[id], addr_value, n, l, k, T);
-            threads[id - 1].join();
+            int id = l % parrallel_num;
+            threads[id] = thread(sub_fft, wh[id], addr_value, n, l, k, T);
+            threads[id].join();
 
             T *= phiT;
         }
 
-        for (int i = 1; i <= parrallel_num; i++)
+        for (int i = 0; i < parrallel_num; i++)
             wh[i]->releaseLock(1, addr_value);
+
+
     }
 
     // Decimate
@@ -253,10 +255,10 @@ void p_fft_MSI(GAddr addr_value)
         {
 
             // l表示每一组的首个元素的下标
-            int id = l % parrallel_num + 1;
-            threads[id - 1] = thread(sub_fft, wh[id], addr_value, n, l, k, T);
+            int id = l % parrallel_num;
+            threads[id] = thread(sub_fft, wh[id], addr_value, n, l, k, T);
             // threads[id - 1] = thread(test);
-            threads[id - 1].join();
+            threads[id].join();
 
             T *= phiT;
         }
@@ -365,13 +367,19 @@ void Solve_MSI()
 int main(int argc, char *argv[])
 {
     iteration_times = atoi(argv[1]);
+    no_run = atoi(argv[2]);
     srand(time(NULL));
     curlist = ibv_get_device_list(NULL);
     Create_master();
     for (int i = 0; i < parrallel_num + 2; ++i)
         Create_worker();
-
-    Solve_MSI();
-    // Solve_RC();
+    if (no_run == 1)
+    {
+        Solve_MSI();
+    }
+    else if (no_run == 2)
+    {
+        Solve_RC();
+    }
     return 0;
 }
