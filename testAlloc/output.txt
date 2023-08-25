@@ -1,7 +1,0 @@
-
-N = 32
-running time : 24182880
-N = 32
-running time : 17629242
-N = 32
-running time : 18340567

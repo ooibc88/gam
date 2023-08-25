@@ -239,3 +239,119 @@ readbuf[6]=1.900891+-0.207255i
 readbuf[7]=1.909180+-0.243227i
 readbuf[8]=1.918649+-0.279896i
 readbuf[9]=1.929643+-0.317357i
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.155 --port_worker 1236 --is_master 1 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+is_master=1,master_ip=10.77.110.155,master_port=1237,worker_ip=10.77.110.155,worker_port=1236
+addr_value=10000017fe000
+Start
+k = 1024
+k = 512
+k = 256
+k = 128
+k = 64
+k = 32
+k = 16
+k = 8
+k = 4
+k = 2
+End
+running time : 11712786
+
+
+result:
+readbuf[0]=1.878607+0.000000i
+readbuf[1]=1.879237+-0.033996i
+readbuf[2]=1.881048+-0.068088i
+readbuf[3]=1.884197+-0.102360i
+readbuf[4]=1.888412+-0.136919i
+readbuf[5]=1.894115+-0.171835i
+readbuf[6]=1.900891+-0.207255i
+readbuf[7]=1.909180+-0.243227i
+readbuf[8]=1.918649+-0.279896i
+readbuf[9]=1.929643+-0.317357i
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.155 --port_worker 1236 --is_master 1 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+is_master=1,master_ip=10.77.110.155,master_port=1237,worker_ip=10.77.110.155,worker_port=1236
+addr_value=10000017fe000
+Start
+k = 1024
+k = 512
+k = 256
+k = 128
+k = 64
+k = 32
+k = 16
+k = 8
+k = 4
+k = 2
+End
+running time : 11470994
+
+
+result:
+readbuf[0]=1.878607+0.000000i
+readbuf[1]=1.879237+-0.033996i
+readbuf[2]=1.881048+-0.068088i
+readbuf[3]=1.884197+-0.102360i
+readbuf[4]=1.888412+-0.136919i
+readbuf[5]=1.894115+-0.171835i
+readbuf[6]=1.900891+-0.207255i
+readbuf[7]=1.909180+-0.243227i
+readbuf[8]=1.918649+-0.279896i
+readbuf[9]=1.929643+-0.317357i
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.155 --port_worker 1236 --is_master 1 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+is_master=1,master_ip=10.77.110.155,master_port=1237,worker_ip=10.77.110.155,worker_port=1236
+addr_value=10000017fe000
+Start
+k = 1024
+k = 512
+k = 256
+k = 128
+k = 64
+k = 32
+k = 16
+k = 8
+k = 4
+k = 2
+End
+running time : 12264323
+
+
+result:
+readbuf[0]=1.878607+0.000000i
+readbuf[1]=1.879237+-0.033996i
+readbuf[2]=1.881048+-0.068088i
+readbuf[3]=1.884197+-0.102360i
+readbuf[4]=1.888412+-0.136919i
+readbuf[5]=1.894115+-0.171835i
+readbuf[6]=1.900891+-0.207255i
+readbuf[7]=1.909180+-0.243227i
+readbuf[8]=1.918649+-0.279896i
+readbuf[9]=1.929643+-0.317357i
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.155 --port_worker 1236 --is_master 1 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+is_master=1,master_ip=10.77.110.155,master_port=1237,worker_ip=10.77.110.155,worker_port=1236
+addr_value=10000017fe000
+Start
+k = 1024
+k = 512
+k = 256
+k = 128
+k = 64
+k = 32
+k = 16
+k = 8
+k = 4
+k = 2
+End
+running time : 13288763
+
+
+result:
+readbuf[0]=1.878607+0.000000i
+readbuf[1]=1.879237+-0.033996i
+readbuf[2]=1.881048+-0.068088i
+readbuf[3]=1.884197+-0.102360i
+readbuf[4]=1.888412+-0.136919i
+readbuf[5]=1.894115+-0.171835i
+readbuf[6]=1.900891+-0.207255i
+readbuf[7]=1.909180+-0.243227i
+readbuf[8]=1.918649+-0.279896i
+readbuf[9]=1.929643+-0.317357i

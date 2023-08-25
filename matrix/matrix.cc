@@ -25,6 +25,18 @@ int num_threads = 4;
 int iteration_times = 1;
 int N = 32;
 
+struct Particle
+{
+    float position_x; /* m   */
+    float position_y; /* m   */
+    float position_z; /* m   */
+    float velocity_x; /* m/s */
+    float velocity_y; /* m/s */
+    float velocity_z; /* m/s */
+    float mass;       /* kg  */
+    float pad;
+};
+
 void Create_master()
 {
     Conf *conf = new Conf();
@@ -287,9 +299,59 @@ void Solve_MSI()
     return;
 }
 
+void Solve_STRUCT()
+{
+    // Init Gam
+    Init_Gam();
+    // Init matrix
+    GAddr a, b, c, d;
+    int n = N;
+    a = Malloc_addr(wh[0], sizeof(Particle) * n, Msi, 0);
+    Particle write_buf;
+    write_buf.position_x = 1;
+    write_buf.position_y = 2;
+    write_buf.position_z = 3;
+    write_buf.velocity_x = 4;
+    write_buf.velocity_y = 5;
+    write_buf.velocity_z = 6;
+    write_buf.mass = 7;
+
+    float position_z_write = 100;
+
+    Write_val(wh[0], a + sizeof(float) * 2, &position_z_write, sizeof(float), 1);
+
+    Particle read_buf;
+    Read_val(wh[1], a, &read_buf, sizeof(Particle));
+
+    printf("read_buf.position_x = %f\n", read_buf.position_x);
+    printf("read_buf.position_y = %f\n", read_buf.position_y);
+    printf("read_buf.position_z = %f\n", read_buf.position_z);
+    printf("read_buf.velocity_x = %f\n", read_buf.velocity_x);
+    printf("read_buf.velocity_y = %f\n", read_buf.velocity_y);
+    printf("read_buf.velocity_z = %f\n", read_buf.velocity_z);
+
+    return;
+}
+
+void Solve_Malloc()
+{
+    // Init Gam
+    Init_Gam();
+    // Init matrix
+    GAddr a, b, c, d;
+    int n = 500000;
+    a = Malloc_addr(wh[0], sizeof(float) * n, Msi, 0);
+    printf("a = %lx\n", a);
+    
+
+    return;
+}
+
 int main(int argc, char **argv)
 {
-    Solve_RC();
+    Solve_Malloc();
+    // Solve_STRUCT();
+    // Solve_RC();
     // Solve_MSI();
     return 0;
 }

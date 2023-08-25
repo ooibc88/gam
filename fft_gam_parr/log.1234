@@ -40,3 +40,7 @@
 /home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
 /home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 3 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
 /home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1
+/home/wpq/gam/fft_gam_parr/fft --no_node 3 --ip_master 10.77.110.155 --ip_worker 10.77.110.158 --port_worker 1234 --is_master 0 --port_master 1237 --no_run 2 --is_read 1 --is_sync 0 --see_time 1 --sleep_time 1

@@ -1,19 +1,12 @@
-//
-// Created by hrh on 1/4/23.
-//
-#include <iostream>
-
 // GAM
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <iostream>
 #include <thread>
 #include <pthread.h>
 #include <complex>
 #include <cstring>
-#include <iostream>
 #include <thread>
 #include "structure.h"
 #include "worker.h"
@@ -358,10 +351,12 @@ void Solve_MSI()
 
     alloc->ReportCacheStatistics();
 }
+
 void func()
 {
     printf("bad!,master first come in\n");
 }
+
 int main(int argc, char *argv[])
 {
 
