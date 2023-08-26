@@ -8,6 +8,9 @@
 #include "settings.h"
 #include "hashtable.h"
 #include "map.h"
+#ifdef B_I
+#include "util.h"
+#endif
 
 #define NUM_SUBBLOCK 3
 
@@ -20,6 +23,13 @@ enum DirState
   DIR_TO_SHARED,
   DIR_TO_UNSHARED
 };
+
+#ifdef B_I
+struct BI_dir{
+  uint64 Timestamp;
+  list<GAddr> shared;
+};
+#endif
 
 struct DirEntry
 {
@@ -39,6 +49,21 @@ struct DirEntry
   // but if lock = EXCLUSIVE_LOCK_TAG, it is a exclusive lock
   // int lock = 0;
   unordered_map<ptr_t, int> locks;
+  #ifdef SUB_BLOCK
+  //std::vector <DirEntry *> SubEntry; //实际上子目录似乎只需要知道每个块大小情况即可，每个子块就会建一个目录，所以也不需要记录子目录位置。
+  int MySize;
+  #endif
+
+  #ifdef DYNAMIC
+  uint64 Race_time = 0; //统计写写冲突发生的次数
+  std::unordered_map <uint64, uint64> Left; //统计左半边访问的情况
+  std::unordered_map <uint64, uint64> Right;//统计右半边访问的情况
+  int MetaVersion = 0; //记录目录的版本信息
+  #endif
+
+  #ifdef B_I
+  list<BI_dir *> version_list; // 版本链条
+  #endif
 };
 
 class Directory
@@ -70,6 +95,10 @@ class Directory
 
   DirEntry *GetEntry(ptr_t ptr)
   {
+#ifdef SUB_BLOCK
+    if (dir.count(ptr)) return dir.at(ptr);
+    else return nullptr;
+#endif
     if (dir.count(TOBLOCK(ptr)))
     {
       return dir.at(TOBLOCK(ptr));
@@ -88,6 +117,9 @@ class Directory
   void Clear(ptr_t ptr, GAddr addr);
   inline list<GAddr> &GetSList(ptr_t ptr)
   {
+#ifdef SUB_BLOCK
+    return dir.at(ptr)->shared;
+#endif
     return dir.at(TOBLOCK(ptr))->shared;
   }
   inline void lock(ptr_t ptr)
@@ -143,6 +175,52 @@ public:
   {
     return GetEntry((ptr_t)ptr);
   }
+
+  
+#ifdef SUB_BLOCK
+  DirEntry* GetSubEntry(ptr_t ptr) {
+    if (dir.count(ptr)) {
+      return dir.at(ptr);
+    } else {
+      return nullptr;
+    }
+  }
+
+  DirEntry * GetSubEntry(void * ptr) {
+    return GetSubEntry((ptr_t) ptr);
+  }
+#endif
+
+#ifdef B_I
+  BI_dir * Create_BIdir () {
+    BI_dir * BI_entry = new BI_dir();
+    BI_entry->Timestamp = get_time();
+    return BI_entry;
+  }
+
+  void Add_BIdir (DirEntry * Entry, BI_dir * BI_entry) {
+    Entry->version_list.push_back(BI_entry);
+  }
+
+  void Delete_BIdirbegin (DirEntry * Entry) {
+    //epicLog(LOG_WARNING, "got delete birdir");
+    auto it = Entry->version_list.begin();
+    BI_dir * BI_entry = (*it);
+    Entry->version_list.erase(it);
+    BI_entry->shared.clear();
+    delete BI_entry;
+    BI_entry = nullptr;
+  }
+
+  BI_dir * getlastbientry(DirEntry * Entry) {
+    return Entry->version_list.back();
+  }
+
+  uint64 getlastversion(DirEntry * Entry) {
+    if (Entry->version_list.empty()) return 0;
+    return (Entry->version_list.back())->Timestamp;
+  }
+#endif
 
   /* add ergeda add */
 
@@ -229,7 +307,11 @@ public:
 
   void CreateEntry(void *ptr, DataState Cur_state = DataState::MSI, GAddr Owner = 1)
   {
+#ifdef SUB_BLOCK
+    ptr_t block = (ptr_t)ptr;
+#else
     ptr_t block = TOBLOCK(ptr);
+#endif
     DirEntry *entry = GetEntry(ptr);
     if (entry == nullptr)
     {
@@ -239,7 +321,38 @@ public:
       entry->addr = block;
       entry->owner = Owner;
       dir[block] = entry;
+#ifdef DYNAMIC
+      entry->MetaVersion = 1;
+#endif
+
+#ifdef B_I
+      if (Cur_state == DataState::BI) {
+        BI_dir * cur_bientry = Create_BIdir();
+        Add_BIdir(entry, cur_bientry); //最开始建立一个版本
+      }
+#endif
     }
+#ifdef SUB_BLOCK
+    if (Cur_state == WRITE_SHARED) {
+      int Divide = 2;
+      int CurSize = (BLOCK_SIZE / Divide);
+
+      entry->MySize = CurSize;
+
+      ptr_t CurStart = block;
+      for (int i = 0; i < Divide - 1; ++i) {
+        CurStart += CurSize;
+        DirEntry * CurEntry = new DirEntry();
+        CurEntry->state = DIR_UNSHARED;
+        CurEntry->Dstate = Cur_state;
+        CurEntry->addr = CurStart;
+        CurEntry->owner = Owner;
+        dir[CurStart] = CurEntry;
+        CurEntry->MySize = CurSize;
+      }
+    }
+    else entry->MySize = BLOCK_SIZE;
+#endif    
   }
 
   void SetShared(DirEntry *Entry)
@@ -256,6 +369,44 @@ public:
   {
     Entry->state = DIR_UNSHARED;
   }
+
+#ifdef DYNAMIC
+  void DirInit(DirEntry * Entry, DataState Curs=DataState::MSI, int CurSize = BLOCK_SIZE, int CurVersion = 1) {
+    Entry->Dstate = Curs;
+    Entry->MySize = CurSize;
+    Entry->MetaVersion = CurVersion;
+    Entry->state = DIR_UNSHARED;
+    Entry->Left.clear();
+    Entry->Right.clear();
+    Entry->Race_time = 0;
+    Entry->owner = 0;
+    Entry->shared.clear();
+  }
+
+  uint64 GetRacetime (DirEntry * entry) {
+    if (entry == nullptr) {
+      epicLog(LOG_WARNING, "no entry when asking racetime");
+      return 0;
+    }
+    return entry->Race_time;
+  }
+
+  uint64 GetRacetime(void * ptr_t) {
+    return GetRacetime(GetEntry(ptr_t));
+  }
+
+  int GetVersion (DirEntry * entry) {
+    if (entry == nullptr) {
+      epicLog (LOG_WARNING, "no entry when asking version");
+      return 0;
+    }
+    return entry->MetaVersion;
+  }
+  
+  int GetVersion (void * ptr_t) {
+    return GetVersion(GetEntry(ptr_t));
+  }
+#endif
   /* add ergeda add */
 
   DirEntry *ToShared(void *ptr, GAddr addr);

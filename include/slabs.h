@@ -10,7 +10,11 @@
 #include "hashtable.h"
 #include "lockwrapper.h"
 
+#ifdef XEG_DEBUG
+#define ITEM_SIZE_MAX (15000000)
+#else
 #define ITEM_SIZE_MAX (1024*1024)
+#endif
 
 /* Slab sizing definitions. */
 #define POWER_SMALLEST 1

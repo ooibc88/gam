@@ -369,7 +369,12 @@ int Worker::LocalRequestChecker(struct aeEventLoop *eventLoop, long long id,
  */
 void Worker::ProcessToServeRequest(WorkRequest *wr)
 {
-  GAddr block = TOBLOCK(wr->addr);
+  GAddr block;
+#ifdef SUB_BLOCK
+  block = wr->addr;
+#else
+  block = TOBLOCK(wr->addr);
+#endif
   LOCK_MICRO(to_serve_local_requests, block);
   // process these pending local requests due to in transition state
   if (to_serve_local_requests.count(block))

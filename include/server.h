@@ -31,12 +31,52 @@ class Server {
     int sockfd;
     const Conf* conf;
 
+    /* add xmx add */
+    atomic<uint64_t> transferredBytes{0};
+    atomic<uint64_t> racetime{0};
+    atomic<uint64_t> requesttime{0};
+    /* add xmx add */
+#ifdef B_I
+    atomic<uint64_t> read_miss{0};
+    atomic<uint64_t> write_miss{0};
+    atomic<uint64_t> write_hit{0};
+    atomic<uint64_t> read_hit{0};
+#endif
+
     friend class ServerFactory;
     friend class Master;
     friend class Worker;
     friend class Cache;
 
   public:
+
+    /* add xmx add */
+    uint64_t getTransferredBytes() const {
+      return transferredBytes.load();
+    }
+    uint64_t getracetime() const{
+      return racetime.load();
+    }
+    uint64_t getrequesttime() const {
+      return requesttime.load();
+    }
+
+#ifdef B_I
+    uint64_t getreadmiss() const {
+      return read_miss.load();
+    }
+    uint64_t getreadhit() const{
+      return read_hit.load();
+    }
+    uint64_t getwritemiss() const {
+      return write_miss.load();
+    }
+    uint64_t getwritehit() const {
+      return write_hit.load();
+    }
+#endif
+    /* add xmx add */
+
     Client* NewClient(bool isMaster, const char* rdmaConn = nullptr);
     Client* NewClient(const char*);
     Client* NewClient();

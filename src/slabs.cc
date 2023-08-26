@@ -41,7 +41,13 @@ unsigned int SlabAllocator::slabs_clsid(const size_t size) {
 
   if (size == 0)
     return 0;
+  //printf ("power_largest : %d\n", power_largest);
+  //fflush(stdout);
   while (size > slabclass[res].size) {
+    /* add debug add */
+    //printf ("res : %d, size : %d\n", res, slabclass[res].size);
+    //fflush(stdout);
+    /* add debug add */
     if (res++ == power_largest) /* won't fit in the biggest slab */
       return 0;
   }
@@ -124,6 +130,13 @@ void* SlabAllocator::slabs_init(const size_t limit, const double factor,
   memset(slabclass, 0, sizeof(slabclass));
 
   while (++i < POWER_LARGEST && size <= item_size_max / factor) {
+#ifdef XEG_DEBUG
+    if (size > 1000000 && size < 10000000) {
+      --i;
+      size = 10000000;
+      continue;
+    }
+#endif
     /* Make sure items are always n-byte aligned */
     if (size % CHUNK_ALIGN_BYTES)
       size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
@@ -132,12 +145,24 @@ void* SlabAllocator::slabs_init(const size_t limit, const double factor,
         && (size % BLOCK_SIZE)) {
       slabclass[i].size = size / BLOCK_SIZE * BLOCK_SIZE;
       slabclass[i].perslab = item_size_max / slabclass[i].size;
+#ifdef XEG_DEBUG
+      if (size > 1000000) slabclass[i].perslab = 1;
+      else {
+        slabclass[i].perslab = (1000 * 1000) / slabclass[i].size;
+      }
+#endif
       //epicLog(LOG_DEBUG, "aligned slab to slabclass[i].size = %d", slabclass[i].size);
       i++;
     }
 
     slabclass[i].size = size;
     slabclass[i].perslab = item_size_max / slabclass[i].size;
+#ifdef XEG_DEBUG
+    if (size > 1000000) slabclass[i].perslab = 1;
+    else {
+      slabclass[i].perslab = (1000 * 1000) / slabclass[i].size;
+    }
+#endif
     pre_size = size;
     size *= factor;
 //  epicLog(LOG_DEBUG, "slab class %3d: chunk size %9u perslab %7u\n",
@@ -147,6 +172,17 @@ void* SlabAllocator::slabs_init(const size_t limit, const double factor,
   power_largest = i;
   slabclass[power_largest].size = item_size_max;
   slabclass[power_largest].perslab = 1;
+
+#ifdef XEG_DEBUG
+  uint64 total_size = 0;
+  // for (int i = 0; i <= power_largest; ++i) {
+  //   total_size += slabclass[i].size;
+  //   printf ("slab[%d].size : %d\n", i, slabclass[i].size);
+  // }
+  printf ("memlimit : %d\n", mem_limit);
+  // printf ("total_size : %lld\n", total_size);
+#endif
+
   epicLog(LOG_DEBUG, "slab class %3d: chunk size %9u perslab %7u\n", i,
           slabclass[i].size, slabclass[i].perslab);
 
@@ -242,6 +278,12 @@ void SlabAllocator::split_slab_page_into_freelist(char *ptr,
 int SlabAllocator::do_slabs_newslab(const unsigned int id) {
   slabclass_t *p = &slabclass[id];
   int len = slab_reassign ? item_size_max : p->size * p->perslab;
+#ifdef XEG_DEBUG
+  if (id >= 72) len = p->size * p->perslab;
+  else {
+    len = slab_reassign ? (1000 * 1000) : p->size * p->perslab;
+  }
+#endif
   char *ptr;
 
   if ((mem_limit && mem_malloced + len > mem_limit && p->slabs > 0)
@@ -377,10 +419,23 @@ void * SlabAllocator::sb_malloc(size_t size) {
   /*
    * if the slab-allocator isn't initiated, we use the default malloc()!
    */
+  //add debug add
+  //printf ("memlimit : %d\n", mem_limit);
+  //fflush(stdout);
+  //add debug add
   if (mem_limit == 0) {
+    //add debug add
+    //printf ("you are kidding me ???\n");
+    //fflush(stdout);
+    //add debug add
     dbprintf("sb_mallocator is not initiated. Use default malloc\n");
     return NULL;
   }
+
+  //add debug add
+  //printf ("got slabs_clsid\n");
+  //fflush(stdout);
+  //add debug add
 
   size_t newsize = size + SB_PREFIX_SIZE;
 

@@ -16,6 +16,27 @@ void Worker::ProcessRemoteRead(Client *client, WorkRequest *wr)
 #endif
   directory.lock(laddr);
   DirEntry *entry = directory.GetEntry(laddr);
+#ifdef SUB_BLOCK
+  if (wr->flag & Write_shared) {
+    entry = directory.GetSubEntry(laddr);
+#ifdef DYNAMIC
+    //判断版本是否一致
+    if (wr->Version != directory.GetVersion(entry) ) { //版本不一致，需要重新发
+      /*
+        由于已经原子性的使得当前目录为unshared状态后，再做状态转换
+        所以这里版本仍然不一致，只能是副本节点cache处于invalid情况下，发送读请求（变为Cache_to_shared)
+        所以对于读操作可以用write_reply打回去之后，重新发送两个新的请求过来？
+        或许可以简单粗暴的加入toserverequest再执行？
+      */
+      wr->status = 5732;
+      wr->op = WRITE_REPLY;
+      SubmitRequest(client, wr);
+      directory.unlock(laddr);
+      return;
+    }
+#endif
+  }
+#endif
   if (directory.InTransitionState(entry))
   {
     // to_serve_requests[wr->addr].push(pair<Client*, WorkRequest*>(client, wr));
@@ -117,6 +138,9 @@ void Worker::ProcessRemoteReadCache(Client *client, WorkRequest *wr)
   epicAssert(BLOCK_ALIGNED(wr->addr));
 #endif
   GAddr blk = TOBLOCK(wr->addr);
+#ifdef SUB_BLOCK
+  blk = wr->addr;
+#endif
   cache.lock(blk);
   CacheLine *cline = cache.GetCLine(blk);
   if (!cline)
@@ -227,8 +251,19 @@ void Worker::ProcessRemoteReadCache(Client *client, WorkRequest *wr)
 #else
       epicAssert(BLOCK_ALIGNED(wr->addr) || wr->size < BLOCK_SIZE);
       cli->WriteWithImm(wr->ptr, cline->line, wr->size, wr->pid); // reply to the local node
+#ifdef SUB_BLOCK
+      if (wr->flag & Write_shared) {
+        client->WriteWithImm(client->ToLocal(blk), cline->line, cline->CacheSize,
+          wr->id);  //writeback to home node
+      }
+      else {
+        client->WriteWithImm(client->ToLocal(blk), cline->line, BLOCK_SIZE,
+          wr->id);  //writeback to home node
+      }
+#else
       client->WriteWithImm(client->ToLocal(blk), cline->line, BLOCK_SIZE,
-                           wr->id); // writeback to home node
+          wr->id);  //writeback to home node
+#endif
 #endif
     }
 
@@ -342,7 +377,27 @@ void Worker::ProcessRemoteWrite(Client *client, WorkRequest *wr)
 #endif
   epicAssert(BLOCK_ALIGNED((uint64_t)laddr));
   directory.lock(laddr);
-  DirEntry *entry = directory.GetEntry(laddr);
+  DirEntry* entry;
+#ifdef SUB_BLOCK
+  if (wr->flag & Write_shared) {
+    //epicLog(LOG_WARNING, "remote sub write here");
+    entry = directory.GetSubEntry(laddr);
+#ifdef DYNAMIC
+    //判断版本是否一致
+    if (wr->Version != directory.GetVersion(entry) ) { //版本不一致，需要重新发
+      wr->status = 5732;
+      wr->op = WRITE_REPLY;
+      SubmitRequest(client, wr);
+      directory.unlock(laddr);
+      return;
+    }
+#endif
+  }
+  else entry = directory.GetEntry(laddr);
+#else
+  entry = directory.GetEntry(laddr);
+#endif
+
   DirState state = directory.GetState(entry);
   if (directory.InTransitionState(state))
   {
@@ -548,6 +603,15 @@ void Worker::ProcessRemoteWrite(Client *client, WorkRequest *wr)
     GAddr rc = directory.GetSList(entry).front(); // only one worker is updating this line
     Client *cli = GetClient(rc);
 
+    /* add xmx add */
+    if (op_orin == WRITE) {
+      racetime += 1;
+#ifdef DYNAMIC
+      entry->Race_time += 1;
+#endif
+    }
+    /* add xmx add */
+
     // intermediate state
     directory.ToToDirty(entry);
     SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
@@ -566,7 +630,16 @@ void Worker::ProcessRemoteWriteCache(Client *client, WorkRequest *wr)
   // we hold an updated copy of the line (WRITE_FORWARD: Case 4)
   GAddr to_lock = wr->addr;
   cache.lock(to_lock);
-  CacheLine *cline = cache.GetCLine(wr->addr);
+  CacheLine* cline;
+#ifdef SUB_BLOCK
+  if (wr->flag & Write_shared) {
+    //epicLog(LOG_WARNING, "invalid forward cache");
+    cline = cache.GetSubCline(wr->addr);
+  }
+  else cline = cache.GetCLine(wr->addr);
+#else
+  cline = cache.GetCLine(wr->addr);
+#endif
   if (!cline)
   {
     if (INVALIDATE == op_orin || INVALIDATE_FORWARD == op_orin)
@@ -850,6 +923,25 @@ void Worker::ProcessRemoteWriteReply(Client *client, WorkRequest *wr)
       cache.lock(addr);
     }
     pwr->lock();
+#ifdef DYNAMIC
+    if (wr->status == 5732) { //版本不一致导致的失败问题,重新执行pwr
+      //epicLog(LOG_WARNING, "got deadlock here");
+      CacheLine * cline = cache.GetCLine(addr);
+      MyAssert(cline->state == CACHE_TO_DIRTY || cline->state == CACHE_TO_SHARED);
+      if (cline != nullptr) cache.ToInvalid(cline);
+      cache.unlock(addr);
+      parent->counter ++; //马上加入toserverequest
+      pwr->unlock();
+      parent->unlock();
+      AddToServeLocalRequest(addr, parent);
+      ProcessLocalRequest(parent); //直接重新执行一遍。
+      delete wr;
+      wr = nullptr;
+      delete pwr;
+      pwr = nullptr;
+      return;
+    }
+#endif
 
     epicAssert(LOCK_FAILED == wr->status); // for now, only this should happen
     epicAssert((pwr->flag & LOCKED) && (pwr->flag & TRY_LOCK));

@@ -27,7 +27,19 @@ void Worker::ProcessPendingRead(Client *cli, WorkRequest *wr)
   WorkRequest *parent = wr->parent;
   CacheLine *cline = nullptr;
   DirEntry *entry = nullptr;
-  GAddr blk = TOBLOCK(wr->addr);
+  GAddr blk;
+#ifdef SUB_BLOCK
+  if (wr->flag & Write_shared) {
+    blk = wr->addr;
+  }
+  else blk = TOBLOCK(wr->addr);
+#else
+  blk = TOBLOCK(wr->addr);
+#endif
+
+#ifdef SUB_BLOCK
+  blk = wr->addr;
+#endif
 #ifndef SELECTIVE_CACHING
   epicAssert(blk == wr->addr);
 #endif
@@ -37,13 +49,27 @@ void Worker::ProcessPendingRead(Client *cli, WorkRequest *wr)
   {
     epicAssert(!IsLocal(wr->addr));
     cache.lock(blk);
+#ifdef SUB_BLOCK
+  if (wr->flag & Write_shared) {
+    cline = cache.GetSubCline(wr->addr);
+  }
+  else cline = cache.GetCLine(wr->addr);
+#else
     cline = cache.GetCLine(wr->addr);
+#endif
     epicAssert(cline);
   }
   else if (IsLocal(wr->addr))
   {
     directory.lock(ToLocal(wr->addr));
+#ifdef SUB_BLOCK
+    if (wr->flag & Write_shared) {
+      entry = directory.GetSubEntry(ToLocal(wr->addr));
+    }
+    else entry = directory.GetEntry(ToLocal(wr->addr));
+#else
     entry = directory.GetEntry(ToLocal(wr->addr));
+#endif
     epicAssert(entry);
   }
   else
@@ -220,6 +246,25 @@ void Worker::ProcessPendingWrite(Client *cli, WorkRequest *wr)
 #ifdef SELECTIVE_CACHING
   wr->addr = TOBLOCK(wr->addr);
 #endif
+#ifdef DYNAMIC
+      //感觉可以在这里加东西
+      //做完这个操作直接进入ChangeDir操作
+      //通过wr->flag进行判断
+      //invalidate和fetch_and_invalidate
+  if (wr->flag & CheckChange) {
+    wr->lock();
+    if ( (--wr->counter) == 0) { //所有副本节点都已经invalidate成功
+      MyAssert(IsLocal(wr->addr));
+      wr->unlock();
+      ChangeDir(wr->addr, GetDataState(wr->flag) );
+      delete wr; //有待商榷
+      wr = nullptr;
+      return;
+    }
+    wr->unlock();
+    return;
+  }
+#endif
   epicAssert(
       (wr->op == WRITE || wr->op == WRITE_PERMISSION_ONLY) xor IsLocal(wr->addr));
   WorkRequest *parent;
@@ -231,7 +276,15 @@ void Worker::ProcessPendingWrite(Client *cli, WorkRequest *wr)
   {
     epicAssert(!IsLocal(wr->addr));
     cache.lock(wr->addr);
+#ifdef SUB_BLOCK
+    if (wr->flag & Write_shared) {
+      //epicLog (LOG_WARNING, "process pending write");
+      cline = cache.GetSubCline(wr->addr);
+    }
+    else cline = cache.GetCLine(wr->addr);
+#else
     cline = cache.GetCLine(wr->addr);
+#endif
     epicAssert(cline);
   }
   else if (IsLocal(wr->addr))
@@ -620,10 +673,27 @@ void Worker::ProcessPendingWriteForward(Client *cli, WorkRequest *wr)
     directory.lock(laddr);
     logOwner(lcli->GetWorkerId(), wr->addr);
     directory.ToDirty(laddr, lcli->ToGlobal(parent->ptr));
-    directory.unlock(laddr);
+#ifdef DYNAMIC
+  //do nothing
+#else
+  directory.unlock(laddr);
+#endif
 
     // TOOD: add completion check
     lcli->WriteWithImm(nullptr, nullptr, 0, wr->pid); // ack the ownership change
+
+#ifdef DYNAMIC
+  if (directory.GetRacetime(laddr) >= 1 && directory.GetVersion(laddr) <= 3) {
+    //epicLog(LOG_WARNING, "really got here");
+    //TODO: 这里可以限制子块分裂次数，通过检查metaversion
+    StartChange(wr->addr, DataState::WRITE_SHARED);
+    int ret = ErasePendingWork(wr->id);
+    delete wr; //有待商榷，这里是否不能执行processtoserverequest
+    wr = nullptr;
+    return;
+  }
+  else directory.unlock(laddr);
+#endif
 
 #ifdef SELECTIVE_CACHING
   }
@@ -669,7 +739,16 @@ void Worker::ProcessPendingInvalidateForward(Client *cli, WorkRequest *wr)
   wr->counter--;
   epicLog(LOG_DEBUG, "wr->counter after = %d", wr->counter.load());
 
-  DirEntry *entry = directory.GetEntry(ToLocal(wr->addr));
+  DirEntry* entry;
+#ifdef SUB_BLOCK
+  if (wr->flag & Write_shared) {
+    //epicLog(LOG_WARNING, "pending invalid forward");
+    entry = directory.GetSubEntry(ToLocal(wr->addr));
+  }
+  else entry = directory.GetEntry(ToLocal(wr->addr));
+#else
+  entry = directory.GetEntry(ToLocal(wr->addr));
+#endif
 
   epicAssert(directory.GetState(entry) == DIR_TO_DIRTY);
   directory.Remove(entry, cli->GetWorkerId());
@@ -902,6 +981,23 @@ void Worker::ProcessPendingRequest(Client *cli, WorkRequest *wr)
     ProcessPendingWeInv(cli, wr);
     break;
   }
+#ifdef DYNAMIC
+  case CHANGE: {
+    ProcessPendingChange (cli, wr);
+    break;
+  }
+#endif
+
+#ifdef B_I
+  case BI_WRITE: {
+    ProcessPendingBIWrite (cli, wr);
+    break;
+  }
+    case BI_READ: {
+      ProcessPendingBIRead(cli, wr);
+      break;
+    }
+#endif
     /* add ergeda add */
     /* add wpq add */
   case ChangeSubLog:

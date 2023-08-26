@@ -22,6 +22,7 @@
 #include "remote_request_nocache.cc"
 #else // not NOCACHE
 #include "remote_request_cache.cc"
+#include "subblock.cc"
 #endif // NOCACHE
 
 #ifdef DHT
@@ -255,52 +256,70 @@ void Worker::ProcessRemoteEvictDirty(Client *client, WorkRequest *wr)
 }
 
 /* add ergeda add */
-void Worker::ProcessRemoteReadType(Client *client, WorkRequest *wr)
-{
-  // Just_for_test("ProcessRemoteReadType", wr);
-  if (!IsLocal(wr->addr))
-  {
+void Worker::ProcessRemoteReadType (Client * client, WorkRequest * wr) {
+  //Just_for_test("ProcessRemoteReadType", wr);
+  if (!IsLocal(wr->addr)) {
     epicLog(LOG_WARNING, "bug , cannot get to home_node\n");
   }
 
-  char buf[16];
+  char buf[100];
   wr->ptr = buf;
   wr->size = 12;
   wr->op = TYPE_REPLY;
-
-  void *laddr = ToLocal(TOBLOCK(wr->addr));
-  epicLog(LOG_WARNING, "addr : %lld, laddr : %llx\n", TOBLOCK(wr->addr), laddr);
+#ifdef SUB_BLOCK
+  void * laddr = ToLocal(wr->addr);
+#else
+  void* laddr = ToLocal(TOBLOCK(wr->addr));
+#endif
+  //epicLog(LOG_WARNING, "addr : %lld, laddr : %llx\n", TOBLOCK(wr->addr), laddr);
   directory.lock(laddr);
-  DirEntry *entry = directory.GetEntry(laddr);
+  DirEntry* entry = directory.GetEntry(laddr);
+  if (entry == nullptr) epicLog(LOG_FATAL, "no entry ??? ");
   DataState Dstate = directory.GetDataState(entry);
   GAddr Owner = directory.GetOwner(entry);
   directory.unlock(laddr);
 
   appendInteger(buf, (int)Dstate, Owner);
+  /* add xmx add */
+#ifdef SUB_BLOCK
+  wr->size += appendInteger(buf + wr->size, entry->MySize); //增加传输一个代表当前目录大小的变量
+#endif
+/* add xmx add */
   SubmitRequest(client, wr);
   delete wr;
   wr = nullptr;
 }
 
-void Worker::ProcessRemoteTypeReply(Client *client, WorkRequest *wr)
-{
-  // Just_for_test ("ProcessRemoteTypeReply", wr);
+void Worker::ProcessRemoteTypeReply (Client * client, WorkRequest * wr) {
+  //Just_for_test ("ProcessRemoteTypeReply", wr);
   int Tmp;
   GAddr Owner;
-  readInteger((char *)wr->ptr, Tmp, Owner);
+  int CurSize = 0;
+  CurSize += readInteger((char*) wr->ptr, Tmp, Owner);
   DataState Dstate = (DataState)Tmp;
-
+#ifdef SUB_BLOCK
+  GAddr addr = wr->addr;
+#else
   GAddr addr = TOBLOCK(wr->addr);
-  directory.lock((void *)addr);
-  DirEntry *entry = directory.GetEntry((void *)addr);
+#endif
+  directory.lock((void*)addr);
+  DirEntry * entry = directory.GetEntry((void*)addr);
   directory.SetDataState(entry, Dstate);
   directory.SetMetaOwner(entry, Owner);
   directory.SetShared(entry);
-  directory.unlock((void *)addr);
+  /* add xmx add */
+#ifdef SUB_BLOCK
+  int Size;
+  CurSize += readInteger( ( (char*)wr->ptr + CurSize), Size);
+  entry->MySize = Size;
+  //printf ("Current block's Size : %d\n", Size); // just for initial test
+#endif
+  /* add xmx add */
+  directory.unlock((void*)addr);
 
   int ret = ErasePendingWork(wr->id);
   ProcessToServeRequest(wr);
-  delete wr; // 合理究竟要不要加这句
+  delete wr; //合理究竟要不要加这句
   wr = nullptr;
 }
 
@@ -559,6 +578,36 @@ void Worker::ProcessRequest(Client *client, WorkRequest *wr)
     ProcessRemoteWeInv(client, wr);
     break;
   }
+#ifdef DYNAMIC
+    case CHANGE:
+      {
+        ProcessRemoteChange(client, wr);
+        break;
+      }
+#endif
+
+#ifdef B_I
+    case BI_WRITE:
+      {
+        ProcessRemoteBIWrite(client, wr);
+        break;
+      }
+    case BI_READ:
+      {
+        ProcessRemoteBIRead(client, wr);
+        break;
+      }
+    case BI_INFORM:
+      {
+        ProcessRemoteBIInform(client, wr);
+        break;
+      }
+    case BI_INV:
+      {
+        ProcessRemoteBIInv(client, wr);
+        break;
+      }
+#endif
     /*  add ergeda add */
 
     /* add wpq add */

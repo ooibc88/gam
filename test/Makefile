@@ -61,8 +61,11 @@ cs_test: cs_test.cc
 test: test.cc
 	$(CPP) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS)
 
+test_matrix: test_matrix.cc
+	$(CPP) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS)
+
 gfunc_test: ../test/gfunc_test.cc
 	$(CPP) $(CFLAGS) $(INCLUDE) -g -o $@ $^ $(LIBS)		
 
 clean:
-	rm -rf example example-r worker master slab_test rw_test lock_test lru_test fence_test benchmark hashtable_test hashtable_throw_test garray_test cs_test gfunc_test test
+	rm -rf example example-r worker master slab_test rw_test lock_test lru_test fence_test benchmark hashtable_test hashtable_throw_test garray_test cs_test gfunc_test test test_matrix

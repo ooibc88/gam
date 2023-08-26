@@ -27,6 +27,31 @@ class WorkerHandle
   int notify_buf_size;
 #endif
 public:
+  /* add xmx add */
+  uint64_t getTransferredBytes() const {
+    return worker->getTransferredBytes();
+  }
+  uint64_t getracetime() const {
+    return worker->getracetime();
+  }
+  uint64_t getrequesttime() const {
+    return worker->getrequesttime();
+  }
+#ifdef B_I
+    uint64_t getreadmiss() const {
+      return worker->getreadmiss();
+    }
+    uint64_t getreadhit() const{
+      return worker->getreadhit();
+    }
+    uint64_t getwritemiss() const {
+      return worker->getwritemiss();
+    }
+    uint64_t getwritehit() const {
+      return worker->getwritehit();
+    }
+#endif
+  /* add xmx add */
   WorkerHandle(Worker *w);
   void RegisterThread();
   void DeRegisterThread();

@@ -37,7 +37,7 @@ WorkerHandle *malloc_wh;
 WorkerHandle *wh[10];
 
 // 可以改
-int length = 1 << 10;
+int length = 1 << 6;
 #define N length
 float fs = 1000;   // 采样频率
 float dt = 1 / fs; // 采样间隔（周期）
@@ -351,6 +351,44 @@ void Solve_MSI()
     for (int round = 0; round < Iteration; ++round)
         p_fft_MSI(addr_value);
 
+    complex<float> temp1;
+    Read_val(wh[0], addr_value, (int *)&temp1, sizeof(complex<float>));
+    long End = get_time();
+    printf("End\n");
+    printf("running time : %ld\n", End - Start);
+
+    complex<float> readbuf[N];
+    Read_val(wh[0], addr_value, (int *)readbuf, sizeof(complex<float>) * N);
+    for (int i = 0; i < N; i++)
+        printf("readbuf[%d]=%f+%fi\n", i, readbuf[i].real(), readbuf[i].imag());
+
+    for (int i = 0; i < num_worker; ++i)
+        wh[i]->ReportCacheStatistics();
+}
+
+
+void Solve_WS()
+{
+    malloc_wh = wh[0];
+
+    complex<float> value[N];
+
+    for (int i = 0; i < N; i++)
+    {
+        value[i].real(0.7 * sin(2 * PI * 50 * dt * i) + sin(2 * PI * 120 * dt * i));
+        value[i].imag(0);
+    }
+    GAddr addr_value = Malloc_addr(malloc_wh, sizeof(complex<float>) * N, Write_shared, 1);
+
+    Write_val(malloc_wh, addr_value, (int *)value, sizeof(complex<float>) * N, 1);
+
+    int Iteration = iteration_times;
+    printf("Start\n");
+    long Start = get_time();
+
+    for (int round = 0; round < Iteration; ++round)
+        p_fft_MSI(addr_value);
+
     long End = get_time();
     printf("End\n");
     printf("running time : %ld\n", End - Start);
@@ -380,6 +418,10 @@ int main(int argc, char *argv[])
     else if (no_run == 2)
     {
         Solve_RC();
+    }
+    else if (no_run == 3)
+    {
+        Solve_WS();
     }
     return 0;
 }

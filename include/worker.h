@@ -371,12 +371,51 @@ public:
       return DataState::READ_MOSTLY;
     if (flag & RC_Write_shared) // 用来标记基于释放一致性的写共享策略
       return DataState::RC_WRITE_SHARED;
+#ifdef B_I
+    if (flag & b_i) return DataState::BI;
+#endif
     return DataState::MSI;
   }
   void Just_for_test(char *Func, WorkRequest *wr)
   { // for debug
     epicLog(LOG_WARNING, "Worker %d implement Func : %s with op : %d, addr : %llx, flag : %x, size : %d", GetWorkerId(), Func, wr->op, wr->addr, wr->flag, wr->size);
   }
+
+#ifdef SUB_BLOCK
+  // sub_block
+  void ProcessRemoteSubRead(Client* client, WorkRequest* wr);
+  void ProcessRemoteSubReadCache(Client* client, WorkRequest* wr);
+  void ProcessRemoteSubReadReply(Client* client, WorkRequest* wr);
+  void ProcessRemoteSubWrite(Client* client, WorkRequest* wr);
+  void ProcessRemoteSubWriteCache(Client* client, WorkRequest* wr);
+  void ProcessRemoteSubWriteReply(Client* client, WorkRequest* wr);
+#endif
+
+#ifdef DYNAMIC
+  int RevGetstate (DataState Curs) {
+    if (Curs == DataState::WRITE_SHARED) return Write_shared;
+    else if (Curs == DataState::ACCESS_EXCLUSIVE) return Access_exclusive;
+    else if (Curs == DataState::MSI) return Msi;
+    else if (Curs == DataState::READ_MOSTLY) return Read_mostly;
+    else if (Curs == DataState::READ_ONLY) return Read_only;
+    else if (Curs == DataState::WRITE_EXCLUSIVE) return Write_exclusive;
+  }
+  void ChangeDir (GAddr addr, DataState CurState);
+  void ProcessRemoteChange(Client * client, WorkRequest * wr);
+  void ProcessPendingChange(Client * client, WorkRequest * wr);
+  void StartChange(GAddr addr, DataState CurState);
+#endif
+
+#ifdef B_I
+  void ProcessRemoteBIWrite(Client * client, WorkRequest * wr);
+  void ProcessRemoteBIRead(Client * client, WorkRequest * wr);
+  void ProcessRemoteBIInv(Client * client, WorkRequest * wr);
+  void ProcessRemoteBIInform(Client * client, WorkRequest * wr);
+  void ProcessPendingBIRead(Client * client, WorkRequest * wr);
+  void ProcessPendingBIWrite(Client * client, WorkRequest * wr);
+  void UpdateVersion(DirEntry * Entry, GAddr addr);
+#endif
+
   /* add ergeda add */
 
   /* add wpq add */

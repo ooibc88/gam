@@ -189,60 +189,57 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
           continue;
         }
         
-        else if (Ds == WRITE_SHARED)
-        {
-          /* add wpq add*/
-          int subblock_num = directory.GetSubBlockNum(entry, wr->addr);
+#ifdef SUB_BLOCK
+        else if (Ds == WRITE_SHARED) {
+          int CurSize = entry->MySize;
+          nextb = i + CurSize;
 
-          int subblock_owner = directory.GetSubBlockOwner(entry, subblock_num);
-          GAddr subblock_addr = directory.GetSubBlockAddr(entry, subblock_owner);
-
-          /* add wpq add */
-          int offset = wr->addr - TOBLOCK(wr->addr);
-          epicLog(LOG_PQ, "Ds = %d, offset = %d,subblock_num = %d, subblock_owner = %d",
-                  Ds, offset, subblock_num, subblock_owner);
-          epicLog(LOG_PQ, "3 wr->addr=%lx,start=%lx", wr->addr, start);
-
-          if (subblock_owner == GetWorkerId())
-          {
-            epicLog(LOG_PQ, "subblock_owner == GetWorkerId()");
-            if (i < start)
-            {
-              epicLog(LOG_PQ, "i<start");
-            }
-            if (nextb > end)
-            {
-              epicLog(LOG_PQ, "nextb>end");
-            }
-
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            epicLog(LOG_PQ, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
-
-            memcpy(ls, ToLocal(gs), len); // 直接复制就行
+          if (nextb <= start) {
+            directory.unlock(laddr);
+            i = nextb;
+            continue;
           }
-          else
-          {
-            epicLog(LOG_PQ, "subblock_owner != GetWorkerId()");
-            WorkRequest *lwr = new WorkRequest(*wr);
-            lwr->counter = 0;
 
-            Client *cli = GetClient(subblock_addr);
-            lwr->op = writeshared_READ;
+          if (unlikely(s == DIR_DIRTY)) {
+            WorkRequest* lwr = new WorkRequest(*wr);
+            lwr->counter = 0;
+            GAddr rc = directory.GetSList(entry).front();  //only one worker is updating this line
+            Client* cli = GetClient(rc);
+            lwr->op = FETCH_AND_SHARED;
             lwr->addr = i;
-            lwr->size = BLOCK_SIZE;
+            lwr->size = CurSize;
             lwr->ptr = laddr;
             lwr->parent = wr;
             wr->counter++;
             wr->is_cache_hit_ = false;
-
+            //intermediate state
+            epicAssert(s != DIR_TO_SHARED);
+            epicAssert(!directory.IsBlockLocked(entry));
+            directory.ToToShared(entry, rc);
             SubmitRequest(cli, lwr, ADD_TO_PENDING | REQUEST_SEND);
+          } else {
+            GAddr gs = i > start ? i : start;
+            void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+            memcpy(ls, ToLocal(gs), len);
           }
           directory.unlock(laddr);
           i = nextb;
           continue;
         }
+#endif
+#ifdef B_I
+        else if (Ds == BI) { //读直接读就行，一定是最新的
+          read_hit += 1;
+          GAddr gs = i > start ? i : start;
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          memcpy(ls, ToLocal(gs), len);
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+#endif
         
         else if (Ds == RC_WRITE_SHARED)
         {
@@ -265,6 +262,9 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
 
       if (unlikely(s == DIR_DIRTY))
       {
+#ifdef B_I
+        read_miss += 1;
+#endif
         WorkRequest *lwr = new WorkRequest(*wr);
         lwr->counter = 0;
         GAddr rc = directory.GetSList(entry).front(); // only one worker is updating this line
@@ -284,6 +284,9 @@ int Worker::ProcessLocalRead(WorkRequest *wr)
       }
       else
       {
+#ifdef B_I
+        read_hit += 1;
+#endif
         GAddr gs = i > start ? i : start;
         void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
         int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
@@ -598,90 +601,89 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
           continue;
         }
         
-        else if (Ds == WRITE_SHARED)
-        {
-          /* add wpq add*/
-          int subblock_num = directory.GetSubBlockNum(entry, wr->addr);
-
-          int subblock_owner = directory.GetSubBlockOwner(entry, subblock_num);
-          GAddr subblock_addr = directory.GetSubBlockAddr(entry, subblock_owner);
-
-          /* add wpq add */
-          int offset = wr->addr - TOBLOCK(wr->addr);
-          epicLog(LOG_PQ, "Ds = %d, offset = %d,subblock_num(0 start) = %d, subblock_owner(1 start) = %d",
-                  Ds, offset, subblock_num, subblock_owner);
-          epicLog(LOG_PQ, "3 wr->addr=%lx,start=%lx", wr->addr, start);
-
-          if (subblock_owner == GetWorkerId())
-          {
-            epicLog(LOG_PQ, "subblock_owner == GetWorkerId()");
-            if (i < start)
-            {
-              epicLog(LOG_PQ, "i<start");
-            }
-            if (nextb > end)
-            {
-              epicLog(LOG_PQ, "nextb>end");
-            }
-
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            epicLog(LOG_PQ, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
-
-            memcpy(ToLocal(gs), ls, len);
+#ifdef SUB_BLOCK
+        else if (Ds == WRITE_SHARED) {
+          int CurSize = entry->MySize;
+          nextb = i + CurSize;
+          if (nextb <= start) {
+            directory.unlock(laddr);
+            i = nextb;
+            continue;
           }
-          else
-          {
-            epicLog(LOG_PQ, "subblock_owner != GetWorkerId()");
-            WorkRequest *lwr = new WorkRequest(*wr);
+          if (state == DIR_DIRTY || state == DIR_SHARED) {
+            list<GAddr>& shared = directory.GetSList(entry);
+            WorkRequest* lwr = new WorkRequest(*wr);
             lwr->counter = 0;
-            Client *sub_owner_client = GetClient(subblock_addr);
+            lwr->op = state == DIR_DIRTY ? FETCH_AND_INVALIDATE : INVALIDATE;
             lwr->addr = i;
-            lwr->size = BLOCK_SIZE;
-
-            if (wr->flag & ASYNC)
-            {
-              if (!wr->IsACopy())
-              {
+            lwr->size = CurSize;
+            lwr->ptr = laddr;
+            wr->is_cache_hit_ = false;
+            if (wr->flag & ASYNC) {
+              if (!wr->IsACopy()) {
                 wr->unlock();
                 wr = wr->Copy();
                 wr->lock();
               }
             }
             lwr->parent = wr;
-            DirEntry *Entry = directory.GetEntry((void *)i);
-            Entry->ownerlist_subblock[subblock_num] = GetWorkerId();
-            int ownerNumber = Entry->ownerNumber;
-            epicLog(LOG_PQ, "ownerNumber = %d", ownerNumber);
-            GAddr gs = i > start ? i : start;
-            void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));
-            int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
-            epicLog(LOG_PQ, "gs=%lx, ls=%lx, len=%d", gs, ls, len);
-
-            memcpy(ls, ToLocal(gs), len);
-
-            lwr->op = ChangeSubLog;
-            lwr->flagSub1 = subblock_num;
-            lwr->flagSub2 = GetWorkerId();
-            int temp1 = 0;
-            for (temp1 = 1; temp1 <= ownerNumber; temp1++)
-            {
-              if (temp1 == GetWorkerId())
-                continue;
-              GAddr client_addr =
-                  directory.GetSubBlockAddr(Entry, temp1);
-              Client *client = GetClient(client_addr);
-              SubmitRequest(client, lwr,
-                            ADD_TO_PENDING | REQUEST_SEND);
+            lwr->id = GetWorkPsn();
+            lwr->counter = shared.size();
+            wr->counter++;
+            epicAssert(state != DIR_TO_UNSHARED);
+            epicAssert(
+                (state == DIR_DIRTY && !directory.IsBlockLocked(entry))
+                    || (state == DIR_SHARED && !directory.IsBlockWLocked(entry)));
+            directory.ToToUnShared(entry);
+            //we move AddToPending before submit request
+            //since it is possible that the reply comes back before we add to the pending list
+            //if we AddToPending at last
+            AddToPending(lwr->id, lwr);
+            for (auto it = shared.begin(); it != shared.end(); it++) {
+              Client* cli = GetClient(*it);
+              epicLog(LOG_DEBUG, "invalidate (%d) cache from worker %d (lwr = %lx)",
+                      lwr->op, cli->GetWorkerId(), lwr);
+              SubmitRequest(cli, lwr);
+              //lwr->counter++;
             }
+          } else {
+              GAddr gs = i > start ? i : start;
+              void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+              int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+              memcpy(ToLocal(gs), ls, len);
+              epicLog(LOG_DEBUG, "copy dirty data in advance");
+          }
+          directory.unlock(laddr);
+          i = nextb;
+          continue;
+        }
+#endif
+
+#ifdef B_I
+        else if (Ds == BI) { //write就直接写
+          write_hit += 1;
+          
+          GAddr gs = i > start ? i : start;
+          void* ls = (void*) ((ptr_t) wr->ptr + GMINUS(gs, start));
+          int len = nextb > end ? GMINUS(end, gs) : GMINUS(nextb, gs);
+          memcpy(ToLocal(gs), ls, len);
+
+          BI_dir * Last_BIEntry = directory.getlastbientry(entry);
+          if (!(Last_BIEntry->shared.empty()) ) { //只有最后一个版本存在其他副本读，才更新版本，否则更新time_Stamp
+            BI_dir * Cur_BIEntry = directory.Create_BIdir();
+            directory.Add_BIdir(entry, Cur_BIEntry);
+            UpdateVersion(entry, i);
+          }
+          else {
+            Last_BIEntry->Timestamp = get_time(); //或许没必要？
           }
 
           directory.unlock(laddr);
           i = nextb;
           continue;
         }
-        
+#endif 
+
         else if (Ds == RC_WRITE_SHARED)
         {
 
@@ -710,6 +712,9 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
        */
       if (state == DIR_DIRTY || state == DIR_SHARED)
       {
+#ifdef B_I
+        write_miss += 1;
+#endif
         if (state == DIR_DIRTY)
         {
           epicLog(LOG_DEBUG, "state == DIR_DIRTY");
@@ -769,6 +774,9 @@ int Worker::ProcessLocalWrite(WorkRequest *wr)
         }
         else
         {
+#endif
+#ifdef B_I
+        write_hit += 1;
 #endif
           GAddr gs = i > start ? i : start;
           void *ls = (void *)((ptr_t)wr->ptr + GMINUS(gs, start));

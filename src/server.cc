@@ -52,6 +52,11 @@ void Server::ProcessRdmaRequest(ibv_wc& wc) {
   epicLog(LOG_DEBUG, "transferred %d (qp_num %d, src_qp %d)", wc.byte_len,
           wc.qp_num, wc.src_qp);
 
+  /* add xmx add */
+  transferredBytes += wc.byte_len;
+  requesttime += 1;
+  /* add xmx add */
+  
   /* add ergeda add */
   //epicLog (LOG_WARNING, "Worker %d send to Worker %d op %d\n", cli->GetWorkerId(), GetWorkerId(), wc.opcode);
   /* add ergeda add */
@@ -125,7 +130,6 @@ void Server::ProcessRdmaRequest(ibv_wc& wc) {
       break;
     }
     case IBV_WC_RECV_RDMA_WITH_IMM: {
-      epicLog(LOG_DEBUG, "write at here");
       epicLog(LOG_DEBUG, "Get recv with IMM completion event");
       char* data = cli->RecvComp(wc);
 

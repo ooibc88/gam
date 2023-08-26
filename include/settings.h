@@ -29,6 +29,24 @@ using namespace std;
 //#define SELECTIVE_CACHING
 #define GFUNC_SUPPORT
 
+/* add xmx add */
+#define SUB_BLOCK
+/* add xmx add */
+
+/* add dynamic add */
+#define DYNAMIC
+/* add dynamic add */
+
+/* add B_I add */
+#define B_I
+#define Max_version 15
+#define Max_timediff 2000000000000
+/* add B_I add */
+
+/* add debug add */
+#define XEG_DEBUG
+/* add debug add */
+
 //#define USE_PIPE_W_TO_H
 //#define USE_PIPE_H_TO_W
 #define USE_BOOST_QUEUE
@@ -65,8 +83,19 @@ using namespace std;
 // #define BLOCK_POWER 9
 // #define BLOCK_MASK 0xFFFFFFFFFFFFFE00L
 
-#define BLOCK_POWER 12
-#define BLOCK_MASK 0xFFFFFFFFFFFFF000L
+/* add xmx add */
+//#define BLOCK_POWER 8
+//#define BLOCK_POWER 9
+#define BLOCK_POWER 10
+//#define BLOCK_POWER 11
+//#define BLOCK_POWER 12
+
+//#define BLOCK_MASK 0xFFFFFFFFFFFFFF00L
+//#define BLOCK_MASK 0xFFFFFFFFFFFFFE00L
+#define BLOCK_MASK 0xFFFFFFFFFFFFFC00L
+//#define BLOCK_MASK 0xFFFFFFFFFFFFF800L
+//#define BLOCK_MASK 0xFFFFFFFFFFFFF000L
+/* add xmx add */
 
 #define BLOCK_SIZE (1 << BLOCK_POWER)
 
@@ -116,6 +145,9 @@ enum DataState {
   WRITE_EXCLUSIVE,
   WRITE_SHARED,
   RC_WRITE_SHARED
+#ifdef B_I
+  ,BI
+#endif
 };
 
 /* add ergeda add */

@@ -18,7 +18,11 @@
 class Worker;
 
 //we assume the base address is also BLOCK-aligned
+#ifdef SUB_BLOCK
+#define GTOBLOCK(x) (x)
+#else
 #define GTOBLOCK(x) TOBLOCK(x)
+#endif
 
 #define CACHE_LINE_PREFIX 0 //dirty/invalid
 typedef void* caddr;
@@ -54,6 +58,12 @@ struct CacheLine {
   int nwrite = 0;
   int ntoshared = 0;
   int ntoinvalid = 0;
+#endif
+#ifdef SUB_BLOCK
+  int CacheSize = 0;
+#endif
+#ifdef B_I
+  uint64 Timestamp = 0;
 #endif
 };
 
@@ -156,6 +166,21 @@ class Cache {
 #endif
 
   public:
+  /* add xmx add */
+#ifdef SUB_BLOCK
+  inline CacheLine * GetSubCline (GAddr addr) {
+    GAddr block = addr;
+    if (caches.count(block)) {
+      CacheLine* cline = caches.at(block);
+      return cline;
+    }
+    else return nullptr;
+  }
+
+  CacheLine *SetSubline (GAddr addr, int CurSize);
+#endif
+
+  /* add xmx add */
   atomic<long> to_evicted;
   Cache(Worker* w);
   Cache() {} ;

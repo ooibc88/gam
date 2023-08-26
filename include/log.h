@@ -30,6 +30,12 @@ void PrintStackTrace();
 #define epicLog(level, fmt, ...) _epicLog ((char*)__FILE__, (char*)__func__, __LINE__, level, fmt, ## __VA_ARGS__)
 //#endif
 
+#ifdef XEG_DEBUG
+#define MyAssert(_e) ((_e)?(void)0 : (epicLog(LOG_WARNING, #_e" Assert Failed"),PrintStackTrace(),assert(false)))
+#else
+#define MyAssert(_e) (__ASSERT_VOID_CAST (0))
+#endif
+
 #ifdef NDEBUG
 #define epicAssert(_e) (__ASSERT_VOID_CAST (0))
 #else

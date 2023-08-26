@@ -1,3 +1,7 @@
+cd ../src
+make clean
+make -j
+cd ../fft
 rm -rf t t1 t2 t3
 iteration=1
 no_run=1
