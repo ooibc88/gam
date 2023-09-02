@@ -60,8 +60,8 @@ class HashTable : public cuckoohash_map<Key, T, CityHasher<Key>> {
     try {
       ret = this->find(key);
     } catch (const exception& e) {
-      printf("cannot find the key for hash table %s (%s)", name.c_str(),
-             e.what());
+      // printf("cannot find the key for hash table %s (%s)", name.c_str(),
+      //        e.what());
       assert(false);
     }
     return ret;

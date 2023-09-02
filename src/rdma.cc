@@ -756,6 +756,9 @@ ssize_t RdmaContext::Cas(raddr src, uint64_t oldval, uint64_t newval,
 }
 
 void RdmaContext::ProcessPendingRequests(int n) {
+  /* add ergeda add */
+  //epicLog(LOG_WARNING, "got to rdma pending request\n");
+  /* add ergeda add */
   //process pending rdma requests
   int size = pending_requests.size();
   epicLog(LOG_INFO, "pending_requests %d", size);
@@ -767,12 +770,18 @@ void RdmaContext::ProcessPendingRequests(int n) {
   struct ibv_sge sls[n];
   struct ibv_send_wr* prev_wr = nullptr;
   int buf_pos = 0;
+  /* add ergeda add */
+  int ergeda = 0;
+  /* add ergeda add */
   for (i = 0; i < size; i++) {
     RdmaRequest& r = pending_requests.front();
     if (r.op == IBV_WR_SEND) {
       //1: "\0", 1: used for debug "\0"
       if (prev_wr && prev_wr->opcode == IBV_WR_SEND
           && buf_pos + r.len + 1 + 1 <= MAX_REQUEST_SIZE && !r.signaled) {
+        /* add ergeda add */
+        //改了上面的if
+        /* add ergeda add */
         epicLog(LOG_INFO, "merged!");
         *((char*) prev_wr->sg_list->addr + buf_pos) = '\0';  //sep by \0
         memcpy((void*) ((char*) prev_wr->sg_list->addr + buf_pos + 1), r.src, r.len);

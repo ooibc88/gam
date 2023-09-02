@@ -35,6 +35,58 @@ int WorkRequest::Ser(char* buf, int& len) {
     case GET:
       len = appendInteger(buf, lop, id, wid, key);
       break;
+    /* add ergeda add */
+    case SET_CACHE:
+      len = appendInteger(buf, lop, id, wid, addr, size, flag, arg);
+      break;
+    case SET_CACHE_REPLY:
+      len = appendInteger(buf, lop, id, wid);
+      break;
+    case RM_READ:
+    case JUST_READ:
+    case WE_READ:
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr);
+      break;
+    case READ_TYPE:
+      len = appendInteger(buf, lop, id, wid, addr);
+      break;
+#ifdef B_I
+    case BI_WRITE:
+#endif
+    case JUST_WRITE:
+    case TYPE_REPLY:
+    case WE_WRITE:
+      len = appendInteger(buf, lop, id, wid, addr, size, flag);
+      memcpy(buf + len, ptr, size);
+      len += size;
+      break;
+    case RM_WRITE:
+      len = appendInteger(buf, lop, id, wid, addr, size, flag, next);
+      memcpy(buf + len, ptr, size);
+      len += size;
+      break;
+    case RM_FORWARD:
+    case WE_INV:
+      len = appendInteger(buf, lop, id, wid, addr);
+      break;
+    case TEST_RDMA:
+      len = appendInteger(buf, lop, id, wid, addr, ptr);
+      break;
+#ifdef DYNAMIC
+    case CHANGE:
+      len = appendInteger(buf, lop, id, wid, addr, flag);
+      break;
+#endif
+
+#ifdef B_I
+    case BI_READ:
+    case BI_INV:
+    case BI_INFORM:
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, arg);
+      break;
+#endif
+
+    /* add ergeda add */
     case PUT:
     case GET_REPLY:
       len = appendInteger(buf, lop, id, wid, key, size);
@@ -46,7 +98,10 @@ int WorkRequest::Ser(char* buf, int& len) {
       break;
 
     case MALLOC:
-      len = appendInteger(buf, lop, id, wid, size, flag);
+      //len = appendInteger(buf, lop, id, wid, size, flag);
+      /* add ergeda add */
+      len = appendInteger(buf, lop, id, wid, size, flag, arg);
+      /* add ergeda add */
       break;
     case MALLOC_REPLY:
       len = appendInteger(buf, lop, id, wid, addr, status);
@@ -70,7 +125,11 @@ int WorkRequest::Ser(char* buf, int& len) {
 #ifdef GFUNC_SUPPORT
     {
       int gid = GetGFuncID(gfunc);
+#ifdef DYNAMIC
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, gid, arg, Version);
+#else
       len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, gid, arg);
+#endif
       if (flag & GFUNC)
         epicAssert(gid != -1);
     }
@@ -82,7 +141,11 @@ int WorkRequest::Ser(char* buf, int& len) {
 #endif
 
 #else
+#ifdef DYNAMIC
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, Version);
+#else
       len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag);
+#endif
 #ifdef SELECTIVE_CACHING
       if(flag & NOT_CACHE) {
         memcpy(buf+len, ptr, size);
@@ -95,19 +158,32 @@ int WorkRequest::Ser(char* buf, int& len) {
 #ifdef GFUNC_SUPPORT
     {
       int gid = GetGFuncID(gfunc);
+#ifdef DYNAMIC
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, gid, arg, Version);
+#else
       len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, gid, arg);
+#endif
       if (flag & GFUNC)
         epicAssert(gid != -1);
     }
 #else
+#ifdef DYNAMIC
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, Version);
+#else
       len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag);
+#endif
 #endif
       break;
     case READ:
     case FETCH_AND_SHARED:
     case FETCH_AND_INVALIDATE:
     case INVALIDATE:
+    case InitAcquire:
+#ifdef DYNAMIC
+      len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, Version);
+#else
       len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag);
+#endif
       break;
     case READ_FORWARD:
     case WRITE_FORWARD:
@@ -127,12 +203,26 @@ int WorkRequest::Ser(char* buf, int& len) {
       len = appendInteger(buf, lop, id, wid, status);
       break;
     case WRITE_REPLY:
-      len = appendInteger(buf, lop, id, wid, status, counter.load());
+#ifdef SUB_BLOCK
+  len = appendInteger(buf, lop, id, wid, status, counter.load(), flag);
+#else
+  len = appendInteger(buf, lop, id, wid, status, counter.load());
+#endif
+      
       break;
     case ACTIVE_INVALIDATE:
     case WRITE_BACK:
       len = appendInteger(buf, lop, id, wid, addr, ptr);
       break;
+
+    /* add wpq add */
+  case ChangeSubLog:
+    len = appendInteger(buf, lop, addr, id, wid, pid, pwid, flagSub1, flagSub2);
+    break;
+
+  case writeshared_READ:
+    len = appendInteger(buf, lop, id, wid, addr, size, ptr, flag, pid, pwid);
+    /* add wpq add */
 
     default:
       epicLog(LOG_WARNING, "unrecognized op code");
@@ -172,6 +262,57 @@ int WorkRequest::Deser(const char* buf, int& len) {
     case GET:
       p += readInteger(p, id, wid, key);
       break;
+    /* add ergeda add */
+    case SET_CACHE:
+      p += readInteger(p, id, wid, addr, size, flag, arg);
+      break;
+    case SET_CACHE_REPLY:
+      p += readInteger(p, id, wid);
+      break;
+    case RM_READ:
+    case JUST_READ:
+    case WE_READ:
+      p += readInteger(p, id, wid, addr, size, ptr);
+      break;
+    case READ_TYPE:
+      p += readInteger(p, id, wid, addr);
+      break;
+#ifdef B_I
+    case BI_WRITE:
+#endif
+    case JUST_WRITE:
+    case TYPE_REPLY:
+    case WE_WRITE:
+      p += readInteger(p, id, wid, addr, size, flag);
+      ptr = const_cast<char*>(p);
+      len = size;
+      break;
+    case RM_WRITE:
+      p += readInteger(p, id, wid, addr, size, flag, next);
+      ptr = const_cast<char*>(p);
+      len = size;
+      break;
+    case RM_FORWARD:
+    case WE_INV:
+      p += readInteger(p, id, wid, addr);
+      break;
+    case TEST_RDMA:
+      p += readInteger (p, id, wid, addr, ptr);
+      break;
+#ifdef DYNAMIC
+    case CHANGE:
+      p += readInteger(p, id, wid, addr, flag);
+      break;
+#endif
+#ifdef B_I
+    case BI_READ:
+    case BI_INV:
+    case BI_INFORM:
+      p += readInteger(p, id, wid, addr, size, ptr, flag, arg);
+      break;
+#endif
+
+    /* add ergeda add */
     case PUT:
     case GET_REPLY:
       p += readInteger(p, id, wid, key, size);
@@ -183,7 +324,10 @@ int WorkRequest::Deser(const char* buf, int& len) {
       break;
 
     case MALLOC:
-      p += readInteger(p, id, wid, size, flag);
+      //p += readInteger(p, id, wid, size, flag);
+      /* add ergeda add */
+      p += readInteger(p, id, wid, size, flag, arg);
+      /* add ergeda add */
       break;
     case MALLOC_REPLY:
       p += readInteger(p, id, wid, addr, status);
@@ -207,7 +351,11 @@ int WorkRequest::Deser(const char* buf, int& len) {
     {
 #ifdef GFUNC_SUPPORT
       int gid = 0;
+#ifdef DYNAMIC
+      p += readInteger(p, id, wid, addr, size, ptr, flag, gid, arg, Version);
+#else
       p += readInteger(p, id, wid, addr, size, ptr, flag, gid, arg);
+#endif
       gfunc = GetGFunc(gid);
       epicLog(LOG_DEBUG, "deser gid = %d, gfunc = %ld", gid, gfunc);
       if (!gfunc)
@@ -220,7 +368,11 @@ int WorkRequest::Deser(const char* buf, int& len) {
 #endif
 
 #else
+#ifdef DYNAMIC
+      p += readInteger(p, id, wid, addr, size, ptr, flag, Version);
+#else
       p += readInteger(p, id, wid, addr, size, ptr, flag);
+#endif
 #ifdef SELECTIVE_CACHING
       if(flag & NOT_CACHE) {
         ptr = const_cast<char*>(p);
@@ -233,13 +385,21 @@ int WorkRequest::Deser(const char* buf, int& len) {
     case WRITE_PERMISSION_ONLY: {
 #ifdef GFUNC_SUPPORT
       int gid = 0;
+#ifdef DYNAMIC
+      p += readInteger(p, id, wid, addr, size, ptr, flag, gid, arg, Version);
+#else
       p += readInteger(p, id, wid, addr, size, ptr, flag, gid, arg);
+#endif
       gfunc = GetGFunc(gid);
       epicLog(LOG_DEBUG, "deser gid = %d, gfunc = %ld", gid, gfunc);
       if (!gfunc)
         epicAssert(!(flag & GFUNC));
 #else
+#ifdef DYNAMIC
+      p += readInteger(p, id, wid, addr, size, ptr, flag, Version);
+#else
       p += readInteger(p, id, wid, addr, size, ptr, flag);
+#endif
 #endif
       break;
     }
@@ -247,7 +407,12 @@ int WorkRequest::Deser(const char* buf, int& len) {
     case FETCH_AND_SHARED:
     case FETCH_AND_INVALIDATE:
     case INVALIDATE:
+    case InitAcquire:
+#ifdef DYNAMIC
+      p += readInteger(p, id, wid, addr, size, ptr, flag, Version);
+#else
       p += readInteger(p, id, wid, addr, size, ptr, flag);
+#endif
       break;
     case READ_FORWARD:
     case WRITE_FORWARD:
@@ -268,13 +433,26 @@ int WorkRequest::Deser(const char* buf, int& len) {
       break;
     case WRITE_REPLY:
       int c;
+#ifdef SUB_BLOCK
+      p += readInteger(p, id, wid, status, c, flag);
+#else
       p += readInteger(p, id, wid, status, c);
+#endif
       counter = c;
       break;
     case ACTIVE_INVALIDATE:
     case WRITE_BACK:
       p += readInteger(p, id, wid, addr, ptr);
       break;
+
+    /* add wpq add */
+  case ChangeSubLog:
+    p += readInteger(p, addr, id, wid, pid, pwid, flagSub1, flagSub2);
+    break;
+  case writeshared_READ:
+    p += readInteger(p, id, wid, addr, size, ptr, flag, pid, pwid);
+    break;
+  /* add wpq add */
 
     default:
       epicLog(LOG_WARNING, "unrecognized op code %d", op);
@@ -298,6 +476,12 @@ WorkRequest::WorkRequest(WorkRequest& wr) {
   free = wr.free;
   size = wr.size;
   status = wr.status;
+
+  /* add wpq add */
+
+  flagSub1 = wr.flagSub1;
+  flagSub2 = wr.flagSub2;
+  /* add wpq add */
 
   flag = wr.flag;
   ptr = wr.ptr;

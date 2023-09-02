@@ -23,11 +23,29 @@ using namespace std;
  * test switch
  */
 //#define WH_USE_LOCK
-#define USE_LRU
+// #define USE_LRU
 #define LRU_NUM 10
 //#define USE_APPR_LRU
 //#define SELECTIVE_CACHING
 #define GFUNC_SUPPORT
+
+/* add xmx add */
+#define SUB_BLOCK
+/* add xmx add */
+
+/* add dynamic add */
+#define DYNAMIC
+/* add dynamic add */
+
+/* add B_I add */
+#define B_I
+#define Max_version 15
+#define Max_timediff 2000000000000
+/* add B_I add */
+
+/* add debug add */
+#define XEG_DEBUG
+/* add debug add */
 
 //#define USE_PIPE_W_TO_H
 //#define USE_PIPE_H_TO_W
@@ -62,8 +80,23 @@ using namespace std;
 #define MAX_SHARED_LOCK 254 //MAX(unsigned char)-1
 #define EXCLUSIVE_LOCK_TAG 255 //MAX(unsigned char)
 
-#define BLOCK_POWER 9
-#define BLOCK_MASK 0xFFFFFFFFFFFFFE00L
+// #define BLOCK_POWER 9
+// #define BLOCK_MASK 0xFFFFFFFFFFFFFE00L
+
+/* add xmx add */
+//#define BLOCK_POWER 8
+//#define BLOCK_POWER 9
+#define BLOCK_POWER 10
+//#define BLOCK_POWER 11
+//#define BLOCK_POWER 12
+
+//#define BLOCK_MASK 0xFFFFFFFFFFFFFF00L
+//#define BLOCK_MASK 0xFFFFFFFFFFFFFE00L
+#define BLOCK_MASK 0xFFFFFFFFFFFFFC00L
+//#define BLOCK_MASK 0xFFFFFFFFFFFFF800L
+//#define BLOCK_MASK 0xFFFFFFFFFFFFF000L
+/* add xmx add */
+
 #define BLOCK_SIZE (1 << BLOCK_POWER)
 
 #define RDMA_RESOURCE_EXCEPTION 1
@@ -101,5 +134,31 @@ using namespace std;
 #define INIT_WORKQ_SIZE 2000
 
 #define MAX_MEM_STATS_SIZE  64 //10+10+20+20+4 in decimal
+
+/* add ergeda add */
+
+enum DataState {
+  MSI=0,
+  READ_ONLY,
+  READ_MOSTLY,
+  ACCESS_EXCLUSIVE,
+  WRITE_EXCLUSIVE,
+  WRITE_SHARED,
+  RC_WRITE_SHARED
+#ifdef B_I
+  ,BI
+#endif
+};
+
+/* add ergeda add */
+
+
+/* add wpq add */
+// #define ReleaseConsistency
+
+// #define unlikely(x) __builtin_expect(!!(x), 0)
+// #define likely(x) __builtin_expect(!!(x), 1)
+
+/* add wpq add */
 
 #endif /* INCLUDE_SETTINGS_H_ */

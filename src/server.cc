@@ -52,6 +52,15 @@ void Server::ProcessRdmaRequest(ibv_wc& wc) {
   epicLog(LOG_DEBUG, "transferred %d (qp_num %d, src_qp %d)", wc.byte_len,
           wc.qp_num, wc.src_qp);
 
+  /* add xmx add */
+  transferredBytes += wc.byte_len;
+  requesttime += 1;
+  /* add xmx add */
+  
+  /* add ergeda add */
+  //epicLog (LOG_WARNING, "Worker %d send to Worker %d op %d\n", cli->GetWorkerId(), GetWorkerId(), wc.opcode);
+  /* add ergeda add */
+
   switch (wc.opcode) {
     case IBV_WC_SEND:
       epicLog(LOG_DEBUG, "get send completion event");
@@ -81,10 +90,14 @@ void Server::ProcessRdmaRequest(ibv_wc& wc) {
       int consumed_len = 0, len = 0;
       while (consumed_len < wc.byte_len) {
         WorkRequest* wr = new WorkRequest();
+        
         if (wr->Deser(data + consumed_len, len)) {
           epicLog(LOG_WARNING, "de-serialize the work request failed\n");
         } else {
+          /* add ergeda add */
+//          epicLog(LOG_WARNING, "worker : %d, IBV_WC_RECV : wr->id = %d\n", cli->GetWorkerId(), wr->id);
           ProcessRequest(cli, wr);
+          /* add ergeda add */
         }
         consumed_len += len;
         if (consumed_len < wc.byte_len) {
@@ -121,6 +134,9 @@ void Server::ProcessRdmaRequest(ibv_wc& wc) {
       char* data = cli->RecvComp(wc);
 
       epicAssert(wc.wc_flags & IBV_WC_WITH_IMM);
+      /* add ergeda add */
+//      epicLog(LOG_WARNING, "worker : %d, IBV_WC_RECV_RDMA_WITH_IMM : wr->id = %d\n", cli->GetWorkerId(), (wc.imm_data));
+      /* add ergeda add */
       ProcessRequest(cli, ntohl(wc.imm_data));
       //resource->ClearSlot(wc.wr_id);
       int n = resource->PostRecvSlot(wc.wr_id);

@@ -1,0 +1,5 @@
+is_master=0,master_ip=10.77.110.158,master_port=1237,worker_ip=10.77.110.155,worker_port=1235
+[872841] 15 Aug 18:33:02.511 # [local_request.cc:199-ProcessLocalMalloc()] at least got to malloc
+lptr_node2=20000013ff000
+lptr : 10000013ff000 , worker_id : 1
+got here!!! node_id : 2 , lptr[0] = 1, lptr[1] = 2, ip_worker : 10.77.110.155

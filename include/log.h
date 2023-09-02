@@ -6,10 +6,12 @@
 
 #include <cassert>
 
-#define LOG_FATAL 0
-#define LOG_WARNING 1
-#define LOG_INFO 2
-#define LOG_DEBUG 3
+#define LOG_TEST 0
+#define LOG_PQ 1
+#define LOG_FATAL 2
+#define LOG_WARNING 3
+#define LOG_INFO 4
+#define LOG_DEBUG 5
 
 #define MAX_LOGMSG_LEN    1024 /* Default maximum length of syslog messages */
 
@@ -27,6 +29,12 @@ void PrintStackTrace();
 //#else
 #define epicLog(level, fmt, ...) _epicLog ((char*)__FILE__, (char*)__func__, __LINE__, level, fmt, ## __VA_ARGS__)
 //#endif
+
+#ifdef XEG_DEBUG
+#define MyAssert(_e) ((_e)?(void)0 : (epicLog(LOG_WARNING, #_e" Assert Failed"),PrintStackTrace(),assert(false)))
+#else
+#define MyAssert(_e) (__ASSERT_VOID_CAST (0))
+#endif
 
 #ifdef NDEBUG
 #define epicAssert(_e) (__ASSERT_VOID_CAST (0))
